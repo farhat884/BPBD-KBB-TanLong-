@@ -769,6 +769,131 @@ def get_color_desa(persen):
     else:
  
         return "#FED976"
+
+
+def hitung_skor_prioritas(data, tingkat="desa"):
+    if tingkat == "desa":
+        persen_rentan = safe_number(
+            data.get("Persen_Rentan_Desa", 0)
+        )
+
+        persen_prioritas = safe_number(
+            data.get("Persen_Teredukasi_Desa", 0)
+        )
+
+        persen_realisasi = safe_number(
+            data.get("Persen_Realisasi_Edukasi_Desa", 0)
+        )
+
+    else:
+        persen_rentan = safe_number(
+            data.get("Persen_Rentan_Kec", 0)
+        )
+
+        persen_prioritas = safe_number(
+            data.get("Persen_Teredukasi_Kecamatan", 0)
+        )
+
+        persen_realisasi = safe_number(
+            data.get("Persen_Realisasi_Edukasi_Kec", 0)
+        )
+
+    # Semakin rendah realisasi, semakin tinggi kebutuhan
+    kebutuhan_edukasi = 100 - persen_realisasi
+
+    skor = (
+        (0.40 * persen_rentan)
+        + (0.30 * persen_prioritas)
+        + (0.30 * kebutuhan_edukasi)
+    )
+
+    return round(skor, 2)
+
+
+def cari_prioritas_daerah(pesan):
+
+    kata_prioritas = [
+        "daerah yang dijadikan prioritas",
+        "daerah prioritas",
+        "wilayah prioritas",
+        "desa prioritas",
+        "kecamatan prioritas",
+        "yang menjadi prioritas",
+        "prioritas saat ini",
+        "daerah mana yang diprioritaskan",
+        "wilayah mana yang diprioritaskan"
+    ]
+
+    if not any(kata in pesan for kata in kata_prioritas):
+        return None
+
+    hasil = []
+
+    # =========================
+    # DESA
+    # =========================
+    for d in desa_dict.values():
+
+        skor = hitung_skor_prioritas(d, "desa")
+
+        hasil.append({
+            "nama": d.get("Desa", "-"),
+            "kecamatan": d.get("Kecamatan", "-"),
+            "tingkat": "Desa",
+            "rentan": safe_number(
+                d.get("Persen_Rentan_Desa", 0)
+            ),
+            "prioritas": safe_number(
+                d.get("Persen_Teredukasi_Desa", 0)
+            ),
+            "realisasi": safe_number(
+                d.get("Persen_Realisasi_Edukasi_Desa", 0)
+            ),
+            "skor": skor
+        })
+
+    # Urutkan dari skor tertinggi
+    hasil.sort(
+        key=lambda x: x["skor"],
+        reverse=True
+    )
+
+    # Ambil 5 wilayah paling prioritas
+    top = hasil[:5]
+
+    if not top:
+        return (
+            "Belum tersedia data yang cukup untuk "
+            "menentukan wilayah prioritas."
+        )
+
+    reply = (
+        "### 🎯 Daerah yang Menjadi Prioritas Saat Ini\n\n"
+        "Penentuan prioritas mempertimbangkan:\n"
+        "- **40%** persentase kelompok rentan\n"
+        "- **30%** persentase prioritas edukasi\n"
+        "- **30%** kebutuhan edukasi yang belum tercapai\n\n"
+        "**5 daerah dengan skor prioritas tertinggi:**\n\n"
+    )
+
+    for i, d in enumerate(top, 1):
+
+        reply += (
+            f"**{i}. Desa {d['nama']}** "
+            f"(Kec. {d['kecamatan']})\n"
+            f"- Persentase rentan: **{d['rentan']:.2f}%**\n"
+            f"- Persentase prioritas: **{d['prioritas']:.2f}%**\n"
+            f"- Realisasi edukasi: **{d['realisasi']:.2f}%**\n"
+            f"- **Skor prioritas: {d['skor']:.2f}**\n\n"
+        )
+
+    reply += (
+        "Semakin tinggi skor, semakin tinggi kebutuhan "
+        "wilayah tersebut untuk diprioritaskan dalam edukasi "
+        "kebencanaan."
+    )
+
+    return reply
  
  
 # ========================================================
@@ -3200,6 +3325,18 @@ def api_chat():
     
     if penjelasan:
         return jsonify({"reply": penjelasan})
+    
+    
+    # 2. Cek pertanyaan prioritas daerah
+    hasil_prioritas = cari_prioritas_daerah(pesan)
+    
+    if hasil_prioritas:
+        return jsonify({
+            "reply": hasil_prioritas
+        })
+
+
+# 3. Cari kecocokan nama desa
     
     
     # 2. Cari wilayah berdasarkan persentase realisasi edukasi
