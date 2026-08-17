@@ -894,7 +894,107 @@ def cari_prioritas_daerah(pesan):
     )
 
     return reply
- 
+
+def cari_skor_prioritas_wilayah(pesan):
+    """
+    Menjawab pertanyaan spesifik mengenai skor prioritas
+    suatu desa atau kecamatan.
+    """
+
+    kata_skor = [
+        "skor prioritas",
+        "nilai prioritas",
+        "skor prioritasnya",
+        "nilai prioritasnya"
+    ]
+
+    if not any(kata in pesan for kata in kata_skor):
+        return None
+
+    # ==========================================
+    # CARI DESA
+    # ==========================================
+
+    for key, d in desa_dict.items():
+
+        nama_desa = str(d.get("Desa", "")).lower()
+
+        if key in pesan or nama_desa in pesan:
+
+            skor = hitung_skor_prioritas(d, "desa")
+
+            persen_rentan = safe_number(
+                d.get("Persen_Rentan_Desa", 0)
+            )
+
+            persen_prioritas = safe_number(
+                d.get("Persen_Teredukasi_Desa", 0)
+            )
+
+            persen_realisasi = safe_number(
+                d.get("Persen_Realisasi_Edukasi_Desa", 0)
+            )
+
+            sisa_target = 100 - persen_realisasi
+
+            return (
+                f"### 🎯 Skor Prioritas Desa {d.get('Desa')}\n\n"
+                f"**Skor Prioritas: {skor:.2f}**\n\n"
+                f"Perhitungannya berdasarkan:\n"
+                f"- Persentase kelompok rentan: **{persen_rentan:.2f}%**\n"
+                f"- Persentase prioritas edukasi: **{persen_prioritas:.2f}%**\n"
+                f"- Sisa target edukasi: **{sisa_target:.2f}%** "
+                f"(realisasi **{persen_realisasi:.2f}%**)\n\n"
+                f"Rumus:\n"
+                f"**(40% × rentan) + "
+                f"(30% × prioritas) + "
+                f"(30% × sisa target edukasi)**"
+            )
+
+    # ==========================================
+    # CARI KECAMATAN
+    # ==========================================
+
+    for key, k in kec_dict.items():
+
+        nama_kec = str(k.get("Kecamatan", "")).lower()
+
+        if key in pesan or nama_kec in pesan:
+
+            skor = hitung_skor_prioritas(k, "kecamatan")
+
+            persen_rentan = safe_number(
+                k.get("Persen_Rentan_Kec", 0)
+            )
+
+            persen_prioritas = safe_number(
+                k.get("Persen_Teredukasi_Kecamatan", 0)
+            )
+
+            persen_realisasi = safe_number(
+                k.get("Persen_Realisasi_Edukasi_Kec", 0)
+            )
+
+            sisa_target = 100 - persen_realisasi
+
+            return (
+                f"### 🎯 Skor Prioritas Kecamatan {k.get('Kecamatan')}\n\n"
+                f"**Skor Prioritas: {skor:.2f}**\n\n"
+                f"Perhitungannya berdasarkan:\n"
+                f"- Persentase kelompok rentan: **{persen_rentan:.2f}%**\n"
+                f"- Persentase prioritas edukasi: **{persen_prioritas:.2f}%**\n"
+                f"- Sisa target edukasi: **{sisa_target:.2f}%** "
+                f"(realisasi **{persen_realisasi:.2f}%**)\n\n"
+                f"Rumus:\n"
+                f"**(40% × rentan) + "
+                f"(30% × prioritas) + "
+                f"(30% × sisa target edukasi)**"
+            )
+
+    return (
+        "Saya belum menemukan nama desa atau kecamatan "
+        "yang dimaksud. Coba tuliskan nama wilayahnya."
+    )
  
 # ========================================================
 # GENERATE MAP
@@ -3338,6 +3438,13 @@ def api_chat():
 
 # 3. Cari kecocokan nama desa
     
+    # 2. Cek pertanyaan skor prioritas wilayah
+    hasil_skor = cari_skor_prioritas_wilayah(pesan)
+    
+    if hasil_skor:
+        return jsonify({
+            "reply": hasil_skor
+        })
     
     # 2. Cari wilayah berdasarkan persentase realisasi edukasi
     hasil_realisasi = cari_wilayah_berdasarkan_realisasi(pesan)
