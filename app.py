@@ -30,6 +30,7 @@ if firebase_json_env:
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-hanya-untuk-lokal')
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # ========================================================
 # KONEKSI KE FIREBASE
@@ -3000,25 +3001,61 @@ TIPS_GLOSARIUM_FOOTER = (
 # sudah ada API key-nya.
 # ========================================================
 
-@app.route("/api/chat", methods=['POST'])
+SYSTEM_PROMPT = """
+Kamu adalah Asisten AI Resmi BPBD Kabupaten Bandung Barat (KBB).
+
+[ATURAN RESPONS]
+1. Padat, lugas, dan langsung ke inti (to the point). Hindari kata-kata pembuka/penutup yang bertele-tele.
+2. Gunakan format bullet points atau bolding agar informasi mudah dipindai (scannable).
+3. Tetap detail dalam menyajikan penjelasan tanpa membuang kata-kata.
+
+[BASIS PENGETAHUAN & RUMUS]
+Gunakan acuan rumus dan istilah resmi BPBD KBB berikut jika pengguna bertanya:
+
+1. Persentase Realisasi Edukasi:
+   - Rumus: (Jumlah Warga Teredukasi Aktual / Warga Wajib Edukasi) x 100%
+   - Penjelasan: Persentase warga yang sudah berhasil diedukasi secara nyata berdasarkan laporan petugas lapangan.
+
+2. Persentase Prioritas Edukasi:
+   - Rumus: (Jumlah Teredukasi Desa / Total Warga Terpapar Kecamatan) x 100%
+   - Penjelasan: Bobot kontribusi tingkat edukasi suatu desa terhadap keseluruhan warga terpapar di skala kecamatan/kabupaten.
+
+3. Kelompok Rentan:
+   - Rumus: (Total Rentan / Total Populasi Wilayah) x 100%
+   - Penjelasan: Mencakup lansia, balita, penyandang disabilitas, dan warga berpenyakit kronis.
+
+4. Warga Wajib Edukasi:
+   - Penjelasan: Jumlah warga di area rawan bencana yang menjadi target prioritas intervensi edukasi.
+
+Jika pengguna bertanya di luar konteks kebencanaan atau data spesifik, jawablah secara umum, profesional, dan tetap relevan dengan KBB/kesiapsiagaan bencana. Jika pengguna mencari data angka desa/kecamatan tertentu tetapi namanya tidak terdeteksi di database, ingatkan mereka untuk menyebutkan nama desa/kecamatan secara eksplisit.
+"""
+
+
+# 3. Route API Chatbot
+@app.route("/api/chat", methods=["POST"])
 def api_chat():
     payload = request.get_json(silent=True) or {}
-    pesan = (payload.get('message') or '').strip().lower()
+    pesan = (payload.get("message") or "").strip().lower()
 
     if not pesan:
-        return jsonify({'reply': "Silakan ketik nama desa atau kecamatan yang ingin Anda tanyakan."})
+        return jsonify(
+            {
+                "reply": "Silakan ketik nama desa atau kecamatan yang ingin Anda tanyakan."
+            }
+        )
 
-    if any(kata in pesan for kata in ['reset', 'kembalikan', 'awal']):
-        return jsonify({'reply': "Baik, peta dikembalikan ke tampilan awal."})
+    if any(kata in pesan for kata in ["reset", "kembalikan", "awal"]):
+        return jsonify({"reply": "Baik, peta dikembalikan ke tampilan awal."})
 
+    # 1. Cek Glosarium
     penjelasan = cari_penjelasan_glosarium(pesan)
     if penjelasan:
-        return jsonify({'reply': penjelasan})
+        return jsonify({"reply": penjelasan})
 
-    # Cari kecocokan nama desa dulu (lebih spesifik)
+    # 2. Cari kecocokan nama desa (lebih spesifik)
     desa_cocok = None
     for key, d in desa_dict.items():
-        if key in pesan or str(d.get('Desa', '')).lower() in pesan:
+        if key in pesan or str(d.get("Desa", "")).lower() in pesan:
             desa_cocok = d
             break
 
@@ -3036,12 +3073,12 @@ def api_chat():
             f"{int(desa_cocok.get('Warga_Wajib_Edukasi_Desa', 0))} warga wajib edukasi)"
             f"{TIPS_GLOSARIUM_FOOTER}"
         )
-        return jsonify({'reply': reply})
+        return jsonify({"reply": reply})
 
-    # Kalau tidak ada desa yang cocok, coba cari kecamatan
+    # 3. Cari kecocokan nama kecamatan
     kec_cocok = None
     for key, k in kec_dict.items():
-        if key in pesan or str(k.get('Kecamatan', '')).lower() in pesan:
+        if key in pesan or str(k.get("Kecamatan", "")).lower() in pesan:
             kec_cocok = k
             break
 
@@ -3060,14 +3097,31 @@ def api_chat():
             f"{int(kec_cocok.get('Total_Warga_Wajib_Edukasi_Kecamatan', 0))} warga wajib edukasi)"
             f"{TIPS_GLOSARIUM_FOOTER}"
         )
-        return jsonify({'reply': reply})
+        return jsonify({"reply": reply})
 
-    return jsonify({'reply': (
-        "Maaf, saya belum menemukan data untuk itu. Coba ketik nama **desa** atau **kecamatan** "
-        "di wilayah Kabupaten Bandung Barat, misalnya \"kondisi desa Cikalonglor\" atau \"kecamatan Lembang\". "
-        "Atau kalau mau paham istilah/rumus yang dipakai, ketik misalnya \"jelaskan persentase prioritas\"."
-    )})
+    # 4. GROQ AI FALLBACK (Dipanggil jika tidak ada pencarian lokal yang cocok)
+    try:
+        completion = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": pesan},
+            ],
+            temperature=0.4,
+            max_tokens=600,
+        )
+        ai_reply = completion.choices[0].message.content
+        return jsonify({"reply": ai_reply})
 
+    except Exception as e:
+        return jsonify(
+            {
+                "reply": (
+                    "Maaf, saya belum menemukan data spesifik untuk itu. Coba ketik nama **desa** atau **kecamatan** "
+                    'di wilayah Kabupaten Bandung Barat, misalnya "kondisi desa Cikalonglor" atau "kecamatan Lembang".'
+                )
+            }
+        )
 
 # ========================================================
 # RUN
