@@ -6,6 +6,7 @@ from functools import wraps
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, db
+from groq import Groq
 
 import folium
 
