@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Petugas - BPBD KBB</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a; color: #f8fafc;
+        }
+        .header {
+            background-color: #1e293b; border-bottom: 3px solid #f97316;
+            padding: 15px 30px; display: flex; align-items: center;
+            justify-content: space-between; flex-wrap: wrap; gap: 10px;
+        }
+        .header h3 { margin: 0; }
+        .header .who { font-size: 0.85rem; color: #94a3b8; }
+        .header .who .role-pill {
+            background: #f97316; color: #0f172a; padding: 2px 10px; border-radius: 20px;
+            font-weight: 700; font-size: 0.7rem; text-transform: uppercase; margin-right: 6px;
+        }
+        .header-actions a {
+            color: #f97316; text-decoration: none; font-weight: bold;
+            border: 1px solid #f97316; padding: 8px 18px; border-radius: 5px;
+            transition: 0.3s; margin-left: 10px; font-size: 0.9rem; display: inline-block;
+        }
+        .header-actions a:hover { background: #f97316; color: #fff; }
+
+        .container { max-width: 900px; margin: 30px auto; padding: 0 20px 60px 20px; }
+
+        .flash-box {
+            background: rgba(34, 197, 94, 0.15); border: 1px solid #22c55e;
+            color: #bbf7d0; padding: 10px 18px; border-radius: 8px;
+            font-size: 0.9rem; list-style: none; margin: 0 0 20px 0;
+        }
+        .flash-box li { margin: 0; }
+
+        .card { background: #1e293b; border-radius: 10px; padding: 24px; margin-bottom: 20px; }
+        .card h3 { margin-top: 0; color: #fff; border-bottom: 1px solid #334155; padding-bottom: 12px; }
+
+        label { font-size: 0.82rem; color: #94a3b8; display: block; margin-bottom: 5px; }
+        .field { margin-bottom: 16px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+
+        select, textarea, input {
+            width: 100%; background: #0f172a; border: 1px solid #334155; color: #f8fafc;
+            padding: 10px 12px; border-radius: 6px; font-size: 0.9rem; font-family: inherit;
+        }
+        select:focus, textarea:focus { outline: none; border-color: #f97316; }
+        textarea { resize: vertical; min-height: 90px; }
+
+        .btn { border: none; padding: 12px 24px; border-radius: 6px; font-weight: 700;
+            cursor: pointer; font-size: 0.95rem; transition: 0.2s; }
+        .btn-orange { background: #f97316; color: #fff; box-shadow: 0 4px 15px rgba(249,115,22,0.4); }
+        .btn-orange:hover { background: #ea580c; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #334155; }
+        th { color: #f97316; font-size: 0.75rem; text-transform: uppercase; }
+        .table-wrap { overflow-x: auto; }
+
+        .badge { padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
+        .badge-awas { background: rgba(239,68,68,0.2); color: #fca5a5; }
+        .badge-siaga { background: rgba(249,115,22,0.2); color: #fdba74; }
+        .badge-waspada { background: rgba(234,179,8,0.2); color: #fde047; }
+        .badge-aman { background: rgba(34,197,94,0.2); color: #86efac; }
+        .empty-msg { color: #64748b; font-style: italic; padding: 20px 0; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h3>👷 DASHBOARD PETUGAS</h3>
+            <div class="who"><span class="role-pill">Petugas</span>{{ session.email }}</div>
+        </div>
+        <div class="header-actions">
+            <a href="/">Beranda</a>
+            <a href="/kondisi">Peta & Chatbot</a>
+            <a href="{{ url_for('logout') }}">Keluar</a>
+        </div>
+    </div>
+
+    <div class="container">
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <ul class="flash-box">
+            {% for message in messages %}
+              <li>✅ {{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            <h3>Input Laporan Kegiatan Edukasi</h3>
+            <p style="color:#94a3b8; font-size:0.85rem; margin-top:-8px;">
+                Setiap warga yang datang saat edukasi dianggap mewakili 1 KK (rata-rata 1 KK = 4 orang).
+                Jadi kalau yang datang 200 orang/KK, yang tercatat teredukasi = 200 &times; 4 = 800 orang.
+            </p>
+            <form action="{{ url_for('petugas_lapor') }}" method="POST">
+                <div class="form-row">
+                    <div class="field">
+                        <label for="kecamatan">Kecamatan</label>
+                        <select name="kecamatan" id="kecamatan" required onchange="isiDesa()">
+                            <option value="">-- Pilih Kecamatan --</option>
+                            {% for kec_nama in desa_by_kecamatan.keys() %}
+                            <option value="{{ kec_nama }}">{{ kec_nama }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="desa">Desa</label>
+                        <select name="desa" id="desa" required>
+                            <option value="">-- Pilih Kecamatan Dulu --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="field">
+                        <label for="jumlah_kk">Jumlah KK yang Hadir/Diedukasi</label>
+                        <input type="number" name="jumlah_kk" id="jumlah_kk" min="1" required
+                               placeholder="Contoh: 200" oninput="hitungOrang()">
+                    </div>
+                    <div class="field">
+                        <label>Estimasi Jumlah Orang Teredukasi</label>
+                        <input type="text" id="preview_orang" value="0 orang" disabled
+                               style="opacity:0.8; cursor:not-allowed;">
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="deskripsi">Deskripsi Kegiatan Edukasi</label>
+                    <textarea name="deskripsi" id="deskripsi" required placeholder="Contoh: Edukasi dilakukan lewat penyuluhan tatap muka di balai desa, materi tanda-tanda longsor & jalur evakuasi, dibantu simulasi evakuasi bersama warga RT 01-03."></textarea>
+                </div>
+
+                <button type="submit" class="btn btn-orange">📤 Kirim Laporan Edukasi</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3>Riwayat Laporan Edukasi Saya</h3>
+            <p style="color:#94a3b8; font-size:0.9rem; margin-top:-8px;">
+                Total yang sudah saya edukasi (dari seluruh laporan): <strong style="color:#f97316;">{{ total_orang_teredukasi_saya | int }} orang</strong>
+            </p>
+            <div class="table-wrap">
+            <table>
+                <thead><tr><th>Tanggal</th><th>Kecamatan</th><th>Desa</th><th>Jumlah KK</th><th>Orang Teredukasi</th><th>Deskripsi Kegiatan</th></tr></thead>
+                <tbody>
+                    {% for l in laporan_list %}
+                    <tr>
+                        <td>{{ l.tanggal }}</td>
+                        <td>{{ l.kecamatan }}</td>
+                        <td>{{ l.desa }}</td>
+                        <td>{{ l.jumlah_kk }}</td>
+                        <td><strong style="color:#f97316;">{{ l.jumlah_orang_teredukasi }}</strong></td>
+                        <td>{{ l.deskripsi }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="empty-msg">Anda belum pernah mengirim laporan.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const desaByKecamatan = {{ desa_by_kecamatan | tojson | safe }};
+
+        function isiDesa() {
+            const kecamatan = document.getElementById('kecamatan').value;
+            const desaSelect = document.getElementById('desa');
+            desaSelect.innerHTML = '';
+
+            if (!kecamatan || !desaByKecamatan[kecamatan]) {
+                desaSelect.innerHTML = '<option value="">-- Pilih Kecamatan Dulu --</option>';
+                return;
+            }
+
+            desaSelect.innerHTML = '<option value="">-- Pilih Desa --</option>';
+            desaByKecamatan[kecamatan].forEach(function(desa) {
+                const opt = document.createElement('option');
+                opt.value = desa;
+                opt.textContent = desa;
+                desaSelect.appendChild(opt);
+            });
+        }
+
+        function hitungOrang() {
+            const jumlahKk = parseInt(document.getElementById('jumlah_kk').value) || 0;
+            const jumlahOrang = jumlahKk * 4;
+            document.getElementById('preview_orang').value = jumlahOrang + ' orang (' + jumlahKk + ' KK × 4)';
+        }
+    </script>
+</body>
+</html>

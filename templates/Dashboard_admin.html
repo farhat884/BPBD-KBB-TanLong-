@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Admin - BPBD KBB</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a; color: #f8fafc;
+        }
+        .header {
+            background-color: #1e293b; border-bottom: 3px solid #f97316;
+            padding: 15px 30px; display: flex; align-items: center;
+            justify-content: space-between; flex-wrap: wrap; gap: 10px;
+        }
+        .header h3 { margin: 0; }
+        .header .who { font-size: 0.85rem; color: #94a3b8; }
+        .header .who .role-pill {
+            background: #f97316; color: #0f172a; padding: 2px 10px; border-radius: 20px;
+            font-weight: 700; font-size: 0.7rem; text-transform: uppercase; margin-right: 6px;
+        }
+        .header-actions a {
+            color: #f97316; text-decoration: none; font-weight: bold;
+            border: 1px solid #f97316; padding: 8px 18px; border-radius: 5px;
+            transition: 0.3s; margin-left: 10px; font-size: 0.9rem; display: inline-block;
+        }
+        .header-actions a:hover { background: #f97316; color: #fff; }
+
+        .container { max-width: 1200px; margin: 30px auto; padding: 0 20px 60px 20px; }
+
+        .flash-box {
+            background: rgba(34, 197, 94, 0.15); border: 1px solid #22c55e;
+            color: #bbf7d0; padding: 10px 18px; border-radius: 8px;
+            font-size: 0.9rem; list-style: none; margin: 0 0 20px 0;
+        }
+        .flash-box li { margin: 0; }
+
+        .stat-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 18px; margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #1e293b; border-radius: 10px; padding: 20px;
+            border-top: 4px solid #f97316; text-align: center;
+        }
+        .stat-card .num { font-size: 1.9rem; font-weight: 800; color: #fff; }
+        .stat-card .label { color: #94a3b8; font-size: 0.85rem; margin-top: 4px; }
+
+        .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab-btn {
+            background: #1e293b; color: #cbd5e1; border: 1px solid #334155;
+            padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 0.9rem;
+            font-weight: 600; transition: 0.2s;
+        }
+        .tab-btn.active { background: #f97316; color: #0f172a; border-color: #f97316; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .card { background: #1e293b; border-radius: 10px; padding: 24px; margin-bottom: 20px; }
+        .card h3 { margin-top: 0; color: #fff; border-bottom: 1px solid #334155; padding-bottom: 12px; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #334155; }
+        th { color: #f97316; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        td { color: #e2e8f0; }
+        .table-wrap { overflow-x: auto; }
+
+        .badge { padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
+        .badge-tinggi, .badge-awas { background: rgba(239,68,68,0.2); color: #fca5a5; }
+        .badge-sedang, .badge-siaga { background: rgba(249,115,22,0.2); color: #fdba74; }
+        .badge-rendah, .badge-aman { background: rgba(34,197,94,0.2); color: #86efac; }
+        .badge-waspada { background: rgba(234,179,8,0.2); color: #fde047; }
+        .badge-default { background: rgba(148,163,184,0.2); color: #cbd5e1; }
+
+        input[type="text"], input[type="email"], input[type="password"], input[type="number"], select {
+            background: #0f172a; border: 1px solid #334155; color: #f8fafc;
+            padding: 8px 10px; border-radius: 5px; font-size: 0.85rem; width: 100%;
+        }
+        input:focus, select:focus { outline: none; border-color: #f97316; }
+
+        .btn { border: none; padding: 8px 16px; border-radius: 5px; font-weight: 700;
+            cursor: pointer; font-size: 0.8rem; transition: 0.2s; }
+        .btn-orange { background: #f97316; color: #fff; }
+        .btn-orange:hover { background: #ea580c; }
+        .btn-red { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid #ef4444; }
+        .btn-red:hover { background: #ef4444; color: #fff; }
+
+        .inline-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .desa-edit-form td { padding: 6px; }
+        .desa-edit-form input { width: 90px; }
+        .form-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px; align-items: end;
+        }
+        .form-grid label { font-size: 0.78rem; color: #94a3b8; display: block; margin-bottom: 4px; }
+        .empty-msg { color: #64748b; font-style: italic; padding: 20px 0; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h3>🛡️ DASHBOARD ADMIN</h3>
+            <div class="who"><span class="role-pill">Admin</span>{{ session.email }}</div>
+        </div>
+        <div class="header-actions">
+            <a href="/">Beranda</a>
+            <a href="/kondisi">Peta & Chatbot</a>
+            <a href="{{ url_for('logout') }}">Keluar</a>
+        </div>
+    </div>
+
+    <div class="container">
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <ul class="flash-box">
+            {% for message in messages %}
+              <li>✅ {{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        <div class="stat-grid">
+            <div class="stat-card"><div class="num">{{ total_kecamatan }}</div><div class="label">Kecamatan</div></div>
+            <div class="stat-card"><div class="num">{{ total_desa }}</div><div class="label">Desa</div></div>
+            <div class="stat-card"><div class="num">{{ total_warga_wajib_edukasi | int }}</div><div class="label">Warga Wajib Edukasi</div></div>
+            <div class="stat-card"><div class="num">{{ total_rentan | int }}</div><div class="label">Total Kelompok Rentan</div></div>
+            <div class="stat-card" style="border-top-color:#22c55e;"><div class="num" style="color:#86efac;">{{ total_orang_teredukasi_laporan | int }}</div><div class="label">Orang Teredukasi (Laporan Petugas)</div></div>
+            <div class="stat-card" style="border-top-color:#16a34a;"><div class="num" style="color:#4ade80;">{{ persen_realisasi_keseluruhan }}%</div><div class="label">Persentase Realisasi Edukasi (Real, KBB)</div></div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="showTab('statistik')">📊 Statistik Kecamatan</button>
+            <button class="tab-btn" onclick="showTab('akun')">👤 Kelola Akun</button>
+            <button class="tab-btn" onclick="showTab('desa')">🏘️ Kelola Data Desa</button>
+            <button class="tab-btn" onclick="showTab('laporan')">📋 Laporan Edukasi Petugas</button>
+        </div>
+
+        <!-- TAB: STATISTIK -->
+        <div class="tab-panel active" id="tab-statistik">
+            <div class="card">
+                <h3>Ringkasan per Kecamatan</h3>
+                <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Kecamatan</th><th>Terpapar</th><th>Total Rentan</th>
+                            <th>% Rentan</th><th>Kategori</th><th>Kelas Risiko</th>
+                            <th>% Prioritas Warga Teredukasi</th><th>% Realisasi Edukasi (Real)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for kec_key, k in kec_list %}
+                        <tr>
+                            <td>{{ k.Kecamatan }}</td>
+                            <td>{{ k.Terpapar_Kecamatan | int }}</td>
+                            <td>{{ k.Total_Rentan_Kec | int }}</td>
+                            <td>{{ k.Persen_Rentan_Kec }}%</td>
+                            <td><span class="badge badge-{{ k.Kategori_Rentan_Kec | lower }}">{{ k.Kategori_Rentan_Kec }}</span></td>
+                            <td>{{ k.Kelas_Risiko_Kec }}</td>
+                            <td>{{ k.Persen_Teredukasi_Kecamatan }}%</td>
+                            <td style="color:#4ade80; font-weight:700;">{{ k.Persen_Realisasi_Edukasi_Kec }}%</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="8" class="empty-msg">Belum ada data kecamatan.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: KELOLA AKUN -->
+        <div class="tab-panel" id="tab-akun">
+            <div class="card">
+                <h3>Tambah Akun Baru</h3>
+                <form class="form-grid" action="{{ url_for('admin_tambah_akun') }}" method="POST">
+                    <div>
+                        <label>Email</label>
+                        <input type="email" name="email" required placeholder="nama@bpbdkbb.go.id">
+                    </div>
+                    <div>
+                        <label>Password</label>
+                        <input type="password" name="password" required placeholder="Password awal">
+                    </div>
+                    <div>
+                        <label>Role</label>
+                        <select name="role">
+                            <option value="petugas">Petugas</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button type="submit" class="btn btn-orange">+ Tambah Akun</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card">
+                <h3>Daftar Akun</h3>
+                <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Email</th><th>Role</th><th>Ubah Role</th><th>Aksi</th></tr></thead>
+                    <tbody>
+                        {% for user_id, info in users.items() %}
+                        <tr>
+                            <td>{{ info.email }}</td>
+                            <td><span class="badge badge-default">{{ info.role | capitalize }}</span></td>
+                            <td>
+                                <form class="inline-form" action="{{ url_for('admin_edit_akun', user_id=user_id) }}" method="POST">
+                                    <select name="role" style="width:120px;">
+                                        <option value="petugas" {% if info.role == 'petugas' %}selected{% endif %}>Petugas</option>
+                                        <option value="admin" {% if info.role == 'admin' %}selected{% endif %}>Admin</option>
+                                    </select>
+                                    <button type="submit" class="btn btn-orange">Simpan</button>
+                                </form>
+                            </td>
+                            <td>
+                                <form action="{{ url_for('admin_hapus_akun', user_id=user_id) }}" method="POST" onsubmit="return confirm('Hapus akun {{ info.email }}?');">
+                                    <button type="submit" class="btn btn-red">Hapus</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="empty-msg">Belum ada akun terdaftar.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: KELOLA DATA DESA -->
+        <div class="tab-panel" id="tab-desa">
+            <div class="card">
+                <h3>Kelola Data Desa</h3>
+                <p style="color:#94a3b8; font-size:0.85rem; margin-top:-8px;">
+                    Ubah angka lalu klik "Simpan" pada baris terkait. Persentase & kategori rentan dihitung ulang otomatis.
+                </p>
+                <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Desa</th><th>Kecamatan</th><th>Warga Wajib Edukasi</th>
+                            <th>Rentan Balita/Lansia</th><th>Rentan Miskin</th><th>Rentan Disabilitas</th>
+                            <th>% Rentan</th><th>Kategori</th><th>% Realisasi Edukasi (Real)</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for desa_key, d in desa_list %}
+                        <tr class="desa-edit-form">
+                            <form action="{{ url_for('admin_edit_desa', desa_key=desa_key) }}" method="POST">
+                            <td>{{ d.Desa }}</td>
+                            <td>{{ d.Kecamatan }}</td>
+                            <td><input type="number" name="warga_wajib_edukasi" value="{{ d.Warga_Wajib_Edukasi_Desa | int }}" min="0"></td>
+                            <td><input type="number" name="rentan_balita_lansia" value="{{ d.Rentan_BalitaLansia_Desa | int }}" min="0"></td>
+                            <td><input type="number" name="rentan_miskin" value="{{ d.Rentan_Miskin_Desa | int }}" min="0"></td>
+                            <td><input type="number" name="rentan_disabilitas" value="{{ d.Rentan_Disabilitas_Desa | int }}" min="0"></td>
+                            <td>{{ d.Persen_Rentan_Desa }}%</td>
+                            <td><span class="badge badge-{{ d.Kategori_Rentan_Desa | lower }}">{{ d.Kategori_Rentan_Desa }}</span></td>
+                            <td style="color:#4ade80; font-weight:700;">
+                                {{ d.Persen_Realisasi_Edukasi_Desa }}%
+                                <div style="color:#64748b; font-weight:400; font-size:0.75rem;">
+                                    ({{ d.Jumlah_Teredukasi_Aktual_Desa | int }} orang)
+                                </div>
+                            </td>
+                            <td><button type="submit" class="btn btn-orange">Simpan</button></td>
+                            </form>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="10" class="empty-msg">Belum ada data desa. Pastikan file Excel sumber tersedia di folder data/.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: LAPORAN EDUKASI -->
+        <div class="tab-panel" id="tab-laporan">
+            <div class="card">
+                <h3>Laporan Kegiatan Edukasi dari Petugas</h3>
+                <p style="color:#94a3b8; font-size:0.9rem; margin-top:-8px;">
+                    Total orang teredukasi dari seluruh laporan: <strong style="color:#f97316;">{{ total_orang_teredukasi_laporan | int }} orang</strong>
+                    <span style="color:#64748b;">(dihitung dari jumlah KK yang hadir &times; 4)</span>
+                </p>
+                <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Tanggal</th><th>Petugas</th><th>Kecamatan</th><th>Desa</th><th>Jumlah KK</th><th>Orang Teredukasi</th><th>Deskripsi Kegiatan</th></tr></thead>
+                    <tbody>
+                        {% for l in laporan_list %}
+                        <tr>
+                            <td>{{ l.tanggal }}</td>
+                            <td>{{ l.petugas_email }}</td>
+                            <td>{{ l.kecamatan }}</td>
+                            <td>{{ l.desa }}</td>
+                            <td>{{ l.jumlah_kk }}</td>
+                            <td><strong style="color:#f97316;">{{ l.jumlah_orang_teredukasi }}</strong></td>
+                            <td>{{ l.deskripsi }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="empty-msg">Belum ada laporan edukasi yang masuk.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showTab(name) {
+            document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + name).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+    </script>
+</body>
+</html>

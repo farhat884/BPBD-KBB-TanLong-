@@ -1,0 +1,11 @@
+# File Konfigurasi & Kredensial
+.env
+firebase_key.json
+serviceAccountKey.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+env/

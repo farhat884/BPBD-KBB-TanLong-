@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Portal Mitigasi - BPBD KBB</title>
+    <style>
+        body { 
+            margin: 0; padding: 0; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #0f172a; /* Biru gelap khas instansi */
+            color: #f8fafc; 
+            display: flex; flex-direction: column; 
+            justify-content: center; align-items: center; 
+            height: 100vh; overflow: hidden;
+            background-image: radial-gradient(circle at top, #1e293b 0%, #0f172a 100%);
+        }
+        .container {
+            text-align: center;
+            border-top: 5px solid #f97316; /* Oranye BPBD */
+            background-color: rgba(30, 41, 59, 0.8);
+            padding: 50px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            animation: fadeIn 1.5s ease-in-out;
+            max-width: 600px;
+        }
+        .logo-text {
+            color: #f97316;
+            font-size: 1.5rem;
+            font-weight: bold;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+        }
+        h1 { 
+            font-size: 2.5rem; 
+            margin: 0 0 15px 0;
+            color: #ffffff;
+        }
+        p {
+            color: #cbd5e1;
+            line-height: 1.6;
+            margin-bottom: 40px;
+            font-size: 1.1rem;
+        }
+        .btn-enter { 
+            background: #f97316; 
+            color: #ffffff; 
+            border: none; 
+            padding: 15px 30px; 
+            font-size: 1.1rem; 
+            font-weight: bold; 
+            text-decoration: none; 
+            border-radius: 5px; 
+            transition: 0.3s;
+            display: inline-block;
+            box-shadow: 0 4px 15px rgba(249, 115, 22, 0.4);
+        }
+        .btn-enter:hover { 
+            background: #ea580c; 
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(249, 115, 22, 0.6);
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .flash-box {
+            max-width: 600px; margin: 0 auto 20px auto; background: rgba(249, 115, 22, 0.15);
+            border: 1px solid #f97316; color: #fed7aa; padding: 10px 18px; border-radius: 8px;
+            font-size: 0.9rem; list-style: none; text-align: left;
+        }
+        .flash-box li { margin: 0; }
+
+        .auth-line {
+            margin-top: 22px; font-size: 0.85rem; color: #94a3b8;
+            display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+        }
+        .auth-line a { color: #f97316; text-decoration: none; font-weight: 600; }
+        .auth-line a:hover { text-decoration: underline; }
+        .role-pill {
+            background: #f97316; color: #0f172a; padding: 2px 10px; border-radius: 20px;
+            font-weight: 700; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul class="flash-box">
+        {% for message in messages %}
+          <li>ℹ️ {{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <div class="container">
+        <div class="logo-text">BPBD KAB. BANDUNG BARAT</div>
+        <h1>Portal Mitigasi Bencana</h1>
+        <p>
+            Sistem Informasi Geografis dan Chatbot AI untuk Analisis Prioritas Edukasi Bencana Longsor di Wilayah Kabupaten Bandung Barat.
+        </p>
+        <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 20px;">
+            <a href="/kondisi" class="btn-enter" style="flex: 1; min-width: 200px;">🗺️ Peta & Chatbot</a>
+            <a href="/edukasi" class="btn-enter" style="flex: 1; min-width: 200px; background: #334155; box-shadow: none;">📖 Panduan Keselamatan</a>
+            <a href="/cuaca" class="btn-enter" style="flex: 1; min-width: 200px; background: #334155; box-shadow: none;">⛈️ Peringatan Cuaca</a>
+        </div>
+
+        <div class="auth-line">
+            {% if session.email %}
+                <span class="role-pill">{{ 'Admin' if session.role == 'admin' else 'Petugas' }}</span>
+                <span>Masuk sebagai {{ session.email }}</span>
+                <span>·</span>
+                <a href="{{ url_for('dashboard_admin') if session.role == 'admin' else url_for('dashboard_petugas') }}">Ke Dashboard</a>
+                <span>·</span>
+                <a href="{{ url_for('logout') }}">Keluar</a>
+            {% else %}
+                <a href="{{ url_for('login') }}">🔐 Login Petugas / Admin</a>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

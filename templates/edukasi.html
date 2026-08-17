@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Panduan Keselamatan - BPBD KBB</title>
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #f8fafc; }
+        .header { background-color: #1e293b; border-bottom: 3px solid #f97316; padding: 15px 30px; display: flex; align-items: center; justify-content: space-between;}
+        .btn-back { color: #f97316; text-decoration: none; font-weight: bold; border: 1px solid #f97316; padding: 8px 20px; border-radius: 5px; transition: 0.3s; }
+        .btn-back:hover { background: #f97316; color: #fff; }
+        .container { max-width: 1000px; margin: 40px auto; padding: 0 20px; }
+        h1 { color: #f97316; text-align: center; margin-bottom: 40px; }
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .card { background: #1e293b; padding: 25px; border-radius: 10px; border-top: 4px solid #f97316; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .card h2 { color: #fff; margin-top: 0; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+        .card ul { padding-left: 20px; line-height: 1.8; color: #cbd5e1; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h3 style="margin:0;">SOP PENCEGAHAN LONGSOR</h3>
+        <div style="display:flex; align-items:center; gap:12px;">
+            {% if session.email %}
+                <a href="{{ url_for('dashboard_admin') if session.role == 'admin' else url_for('dashboard_petugas') }}" class="btn-back">📊 Dashboard</a>
+            {% else %}
+                <a href="{{ url_for('login') }}" class="btn-back">🔐 Login</a>
+            {% endif %}
+            <a href="/" class="btn-back">KEMBALI KE BERANDA</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <h1>Panduan Keselamatan & Evakuasi Warga</h1>
+        
+        <div class="card-grid">
+            <div class="card">
+                <h2>🟡 PRA-BENCANA (Persiapan)</h2>
+                <ul>
+                    <li>Kenali tanda awal: retakan di tanah, air sumur mendadak keruh, pohon/tiang listrik miring.</li>
+                    <li>Siapkan "Tas Siaga Bencana" (dokumen penting, P3K, senter, peluit, air minum).</li>
+                    <li>Ketahui jalur evakuasi dan titik kumpul yang telah ditetapkan aparat desa setempat.</li>
+                    <li>Pantau terus informasi cuaca dari pihak berwenang.</li>
+                </ul>
+            </div>
+
+            <div class="card" style="border-top-color: #ef4444;">
+                <h2>🔴 SAAT BENCANA (Tindakan)</h2>
+                <ul>
+                    <li>Jangan panik. Segera keluar rumah jika terdengar gemuruh atau tanah mulai bergetar.</li>
+                    <li>Jauhi lereng, tebing, atau lembah. Lari menuju tempat yang lebih tinggi dan stabil.</li>
+                    <li>Jangan mencoba menyelamatkan harta benda jika membahayakan nyawa.</li>
+                    <li>Bantu evakuasi kelompok rentan (lansia, anak-anak, disabilitas).</li>
+                </ul>
+            </div>
+
+            <div class="card" style="border-top-color: #22c55e;">
+                <h2>🟢 PASCA-BENCANA (Pemulihan)</h2>
+                <ul>
+                    <li>Jangan segera kembali ke rumah sampai ada instruksi aman dari BPBD.</li>
+                    <li>Jauhi area longsor karena potensi longsor susulan masih sangat tinggi.</li>
+                    <li>Periksa korban luka dan berikan pertolongan pertama (jika mampu).</li>
+                    <li>Laporkan kerusakan infrastruktur kritis ke petugas posko evakuasi.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
