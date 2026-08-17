@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Sistem Informasi Mitigasi & Edukasi Bencana KBB</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        /* 1. Reset Body agar pas 100% tinggi layar tanpa scroll luar */
+        body { 
+            margin: 0; padding: 0; font-family: sans-serif; 
+            background-color: #0e1117; overflow: hidden; 
+            display: flex; flex-direction: column; height: 100vh; 
+        }
+        
+        .header { 
+            background-color: #1e293b; color: #fff; padding: 15px; 
+            text-align: center; border-bottom: 3px solid #f97316; 
+            letter-spacing: 1px; display: flex; align-items: center; 
+            justify-content: center; position: relative; flex-shrink: 0;
+        }
+        
+        .btn-kembali {
+            position: absolute; left: 15px; color: #f97316; 
+            text-decoration: none; font-weight: bold; 
+            border: 1px solid #f97316; padding: 5px 15px; 
+            border-radius: 5px; transition: 0.3s;
+        }
+        .btn-kembali:hover { background: #f97316; color: #fff; }
+
+        .btn-auth {
+            position: absolute; right: 15px; color: #f97316;
+            text-decoration: none; font-weight: bold; font-size: 0.85rem;
+            border: 1px solid #f97316; padding: 5px 15px;
+            border-radius: 5px; transition: 0.3s; white-space: nowrap;
+        }
+        .btn-auth:hover { background: #f97316; color: #fff; }
+
+        /* 2. Map container otomatis mengisi sisa layar */
+        .map-container { flex-grow: 1; width: 100%; position: relative; }
+        
+        #hud-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 5000; display: none; 
+            box-shadow: inset 0 0 100px rgba(255, 0, 51, 0.5);
+            border: 4px solid rgba(255, 0, 51, 0.3);
+        }
+        
+        .scan-line {
+            width: 100%; height: 2px; background-color: #ff0033;
+            position: absolute; top: 0; left: 0; box-shadow: 0 0 15px #ff0033;
+            animation: scan 2s linear infinite;
+        }
+        @keyframes scan { 0% { top: 0; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+        
+        #target-alert {
+            position: absolute; top: 20px; left: 20px;
+            color: #ff0033; font-family: monospace; font-size: 20px; font-weight: bold;
+            text-shadow: 0 0 10px #ff0033; border: 1px solid #ff0033;
+            padding: 10px; background: rgba(20, 0, 0, 0.7);
+            animation: blink 1s infinite alternate;
+        }
+        @keyframes blink { from { opacity: 1; } to { opacity: 0.3; } }
+
+        /* 3. CHATBOT RESPONSIVE (Dinamis menyesuaikan tinggi layar laptop) */
+        #jarvis-chat {
+            position: absolute; top: 20px; right: 20px; 
+            width: 380px; max-width: 90vw; /* Maksimal 90% lebar layar (aman di layar kecil) */
+            max-height: calc(100% - 40px); /* 100% dari peta dikurangi margin, agar input teks tidak tenggelam */
+            background-color: rgba(14, 17, 23, 0.95); border: 1px solid #00ffcc; border-radius: 8px; 
+            z-index: 10000; display: flex; flex-direction: column; 
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.3); font-family: monospace; backdrop-filter: blur(5px);
+        }
+        
+        #chat-header {
+            background-color: #00ffcc; color: #0e1117; padding: 12px; 
+            font-weight: bold; text-align: center; border-top-left-radius: 6px; 
+            border-top-right-radius: 6px; letter-spacing: 2px; flex-shrink: 0;
+        }
+        
+        /* Box teks bisa di-scroll otomatis */
+        #chat-box { flex-grow: 1; padding: 15px; overflow-y: auto; color: #fff; font-size: 14px; }
+        
+        .chat-msg { margin-bottom: 12px; line-height: 1.6; }
+        .ai-msg { color: #00ffcc; }
+        .ai-msg p { margin-top: 0; margin-bottom: 10px; }
+        .ai-msg ul { padding-left: 20px; margin-top: 0; }
+        .ai-msg li { margin-bottom: 5px; }
+        .ai-msg strong { color: #fff; text-shadow: 0 0 5px #00ffcc; }
+        .user-msg { color: #fff; text-align: right; font-style: italic; opacity: 0.9; margin-left: 40px; }
+        
+        #chat-input-area { padding: 12px; border-top: 1px solid #00ffcc; display: flex; flex-shrink: 0; }
+        #user-input { flex: 1; background: transparent; border: none; color: #00ffcc; outline: none; font-family: monospace; font-size: 14px; }
+        #send-btn { background: transparent; color: #00ffcc; border: 1px solid #00ffcc; cursor: pointer; padding: 6px 12px; border-radius: 4px; font-weight: bold; transition: 0.3s; }
+        #send-btn:hover { background: #00ffcc; color: #0e1117; }
+
+        /* ========================================= */
+        /* 4. MODE HP / MOBILE (Layar Kecil < 768px) */
+        /* ========================================= */
+        @media (max-width: 768px) {
+            .header h3 { font-size: 1rem; margin-left: 60px; margin-right: 70px; }
+            .btn-kembali { padding: 5px 10px; font-size: 0.8rem; }
+            .btn-auth { padding: 5px 10px; font-size: 0.7rem; right: 8px; }
+            
+            #target-alert { font-size: 14px; top: 10px; left: 10px; padding: 5px; }
+
+            /* Chatbot pindah ke bawah, numpuk di atas peta */
+            #jarvis-chat {
+                top: auto; 
+                bottom: 10px; 
+                right: 50%;
+                transform: translateX(50%); /* Posisi tepat di tengah */
+                width: calc(100% - 20px); /* Penuhi lebar layar dikurangi margin */
+                max-height: 45%; /* Chatbot hanya mengambil 45% layar, 55% atas untuk peta */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="/" class="btn-kembali">&lt; KEMBALI</a>
+        <h3 style="margin:0;">PETA MITIGASI BENCANA KBB</h3>
+        {% if session.email %}
+            <a href="{{ url_for('dashboard_admin') if session.role == 'admin' else url_for('dashboard_petugas') }}" class="btn-auth">📊 Dashboard</a>
+        {% else %}
+            <a href="{{ url_for('login') }}" class="btn-auth">🔐 Login</a>
+        {% endif %}
+    </div>
+    
+    <div class="map-container">
+        {{ peta_html | safe }}
+        
+        <div id="hud-overlay">
+            <div class="scan-line"></div>
+            <div id="target-alert">⚠️ TARGET PRIORITAS TERDETEKSI</div>
+        </div>
+        
+        <div id="jarvis-chat">
+            <div id="chat-header">🤖 BPBD Chatbot</div>
+            <div id="chat-box">
+                <div class="chat-msg ai-msg">[SISTEM] K-Means Clustering terkalibrasi. Apa instruksi Anda selanjutnya?</div>
+            </div>
+            <div id="chat-input-area">
+                <input type="text" id="user-input" placeholder="Cari kecamatan atau desa...">
+                <button id="send-btn" onclick="sendMessage()">KIRIM</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const mapData = {{ data_dict | tojson | safe }};
+
+        function triggerMapEffect(aiText, userMessage) {
+            let textCombined = (userMessage + " " + aiText).toLowerCase();
+            const hud = document.getElementById("hud-overlay");
+            const alertBox = document.getElementById("target-alert");
+            
+            const mapIframe = document.querySelector('.map-container iframe');
+            let docToSearch = document; 
+            if (mapIframe) docToSearch = mapIframe.contentDocument || mapIframe.contentWindow.document;
+
+            const allPaths = docToSearch.querySelectorAll('.desa-item');
+            
+            if (textCombined.includes("reset") || textCombined.includes("kembalikan") || textCombined.includes("awal")) {
+                alertBox.innerText = `🔄 PETA DIKEMBALIKAN KE NORMAL`;
+                hud.style.display = "block";
+                setTimeout(() => { hud.style.display = "none"; }, 4000);
+                
+                allPaths.forEach(path => {
+                    path.style.fillOpacity = ""; 
+                    path.style.fill = ""; 
+                    path.style.strokeWidth = "";
+                });
+                return;
+            }
+
+            let targetDesas = [];
+            let isFiltering = false;
+
+            const daftarDesa = Object.keys(mapData);
+            let kecamatanDitemukan = new Set();
+            let desaDitemukan = new Set();
+
+            daftarDesa.forEach(desa => {
+                let namaKec = mapData[desa].Kecamatan.toLowerCase();
+                if (textCombined.includes(namaKec)) kecamatanDitemukan.add(mapData[desa].Kecamatan);
+                if (textCombined.includes(desa)) desaDitemukan.add(desa);
+            });
+
+            daftarDesa.forEach(desa => {
+                let namaKec = mapData[desa].Kecamatan.toLowerCase();
+                if (desaDitemukan.has(desa) || textCombined.includes(namaKec)) {
+                    targetDesas.push(desa);
+                }
+            });
+
+            if (targetDesas.length > 0) {
+                isFiltering = true;
+                let wilayahTeks = "";
+                if (kecamatanDitemukan.size > 0) {
+                    wilayahTeks = "KEC. " + Array.from(kecamatanDitemukan).join(', ').toUpperCase();
+                } else {
+                    wilayahTeks = "DESA " + Array.from(desaDitemukan).join(', ').toUpperCase();
+                }
+
+                alertBox.innerText = `🎯 MENYOROT WILAYAH: ${wilayahTeks}`;
+                hud.style.display = "block";
+                setTimeout(() => { hud.style.display = "none"; }, 8000);
+            }
+
+            if (isFiltering) {
+                allPaths.forEach(path => {
+                    let isTarget = false;
+                    targetDesas.forEach(target => {
+                        if (path.classList.contains('desa-' + target)) isTarget = true;
+                    });
+
+                    if (isTarget) {
+                        path.style.fillOpacity = 0.9;
+                        path.style.strokeWidth = "3px";
+                    } else {
+                        path.style.fillOpacity = 0.1; 
+                        path.style.fill = "#555555"; 
+                        path.style.strokeWidth = "1px";
+                    }
+                });
+            }
+        }
+
+        function sendMessage() {
+            const inputField = document.getElementById("user-input");
+            const message = inputField.value;
+            if (!message) return;
+
+            const chatBox = document.getElementById("chat-box");
+            chatBox.innerHTML += `<div class="chat-msg user-msg">${message}</div>`;
+            inputField.value = "";
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            const loadingId = "load-" + Date.now();
+            chatBox.innerHTML += `<div id="${loadingId}" class="chat-msg ai-msg">[SISTEM] Memindai database...</div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById(loadingId).remove();
+                const formattedReply = marked.parse(data.reply);
+                chatBox.innerHTML += `<div class="chat-msg ai-msg"><b>Asisten BPBD:</b><br>${formattedReply}</div>`;
+                chatBox.scrollTop = chatBox.scrollHeight;
+                triggerMapEffect(data.reply, message);
+            })
+            .catch(error => {
+                document.getElementById(loadingId).remove();
+                chatBox.innerHTML += `<div class="chat-msg" style="color:red;">[ERROR] Koneksi server terputus.</div>`;
+            });
+        }
+
+        document.getElementById("user-input").addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>

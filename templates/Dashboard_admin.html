@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Admin - BPBD KBB</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a; color: #f8fafc;
+        }
+        .header {
+            background-color: #1e293b; border-bottom: 3px solid #f97316;
+            padding: 15px 30px; display: flex; align-items: center;
+            justify-content: space-between; flex-wrap: wrap; gap: 10px;
+        }
+        .header h3 { margin: 0; }
+        .header .who { font-size: 0.85rem; color: #94a3b8; }
+        .header .who .role-pill {
+            background: #f97316; color: #0f172a; padding: 2px 10px; border-radius: 20px;
+            font-weight: 700; font-size: 0.7rem; text-transform: uppercase; margin-right: 6px;
+        }
+        .header-actions a {
+            color: #f97316; text-decoration: none; font-weight: bold;
+            border: 1px solid #f97316; padding: 8px 18px; border-radius: 5px;
+            transition: 0.3s; margin-left: 10px; font-size: 0.9rem; display: inline-block;
+        }
+        .header-actions a:hover { background: #f97316; color: #fff; }
+
+        .container { max-width: 1200px; margin: 30px auto; padding: 0 20px 60px 20px; }
+
+        .flash-box {
+            background: rgba(34, 197, 94, 0.15); border: 1px solid #22c55e;
+            color: #bbf7d0; padding: 10px 18px; border-radius: 8px;
+            font-size: 0.9rem; list-style: none; margin: 0 0 20px 0;
+        }
+        .flash-box li { margin: 0; }
+
+        .stat-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 18px; margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #1e293b; border-radius: 10px; padding: 20px;
+            border-top: 4px solid #f97316; text-align: center;
+        }
+        .stat-card .num { font-size: 1.9rem; font-weight: 800; color: #fff; }
+        .stat-card .label { color: #94a3b8; font-size: 0.85rem; margin-top: 4px; }
+
+        .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab-btn {
+            background: #1e293b; color: #cbd5e1; border: 1px solid #334155;
+            padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 0.9rem;
+            font-weight: 600; transition: 0.2s;
+        }
+        .tab-btn.active { background: #f97316; color: #0f172a; border-color: #f97316; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .card { background: #1e293b; border-radius: 10px; padding: 24px; margin-bottom: 20px; }
+        .card h3 { margin-top: 0; color: #fff; border-bottom: 1px solid #334155; padding-bottom: 12px; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #334155; }
+        th { color: #f97316; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        td { color: #e2e8f0; }
+        .table-wrap { overflow-x: auto; }
+
+        .badge { padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
+        .badge-tinggi, .badge-awas { background: rgba(239,68,68,0.2); color: #fca5a5; }
+        .badge-sedang, .badge-siaga { background: rgba(249,115,22,0.2); color: #fdba74; }
+        .badge-rendah, .badge-aman { background: rgba(34,197,94,0.2); color: #86efac; }
+        .badge-waspada { background: rgba(234,179,8,0.2); color: #fde047; }
+        .badge-default { background: rgba(148,163,184,0.2); color: #cbd5e1; }
+
+        input[type="text"], input[type="email"], input[type="password"], input[type="number"], select {
+            background: #0f172a; border: 1px solid #334155; color: #f8fafc;
+            padding: 8px 10px; border-radius: 5px; font-size: 0.85rem; width: 100%;
+        }
+        input:focus, select:focus { outline: none; border-color: #f97316; }
+
+        .btn { border: none; padding: 8px 16px; border-radius: 5px; font-weight: 700;
+            cursor: pointer; font-size: 0.8rem; transition: 0.2s; }
+        .btn-orange { background: #f97316; color: #fff; }
+        .btn-orange:hover { background: #ea580c; }
+        .btn-red { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid #ef4444; }
+        .btn-red:hover { background: #ef4444; color: #fff; }
+
+        .inline-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .desa-edit-form td { padding: 6px; }
+        .desa-edit-form input { width: 90px; }
+        .form-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px; align-items: end;
+        }
+        .form-grid label { font-size: 0.78rem; color: #94a3b8; display: block; margin-bottom: 4px; }
+        .empty-msg { color: #64748b; font-style: italic; padding: 20px 0; text-align: center; }
+
+        /* --- DATA KOSONG (alert + accordion) --- */
+        .warn-banner {
+            background: rgba(249, 115, 22, 0.12); border: 1px solid #f97316;
+            border-radius: 8px; padding: 14px 18px; margin-bottom: 20px;
+            display: flex; align-items: center; justify-content: space-between;
+            flex-wrap: wrap; gap: 10px;
+        }
+        .warn-banner.is-ok { background: rgba(34,197,94,0.1); border-color: #22c55e; }
+        .warn-banner .warn-text { font-size: 0.9rem; color: #fdba74; }
+        .warn-banner.is-ok .warn-text { color: #86efac; }
+        .warn-banner .warn-text strong { color: #fff; font-size: 1rem; }
+        .warn-banner .warn-link {
+            color: #f97316; font-weight: 700; font-size: 0.85rem; text-decoration: none;
+            border: 1px solid #f97316; padding: 6px 14px; border-radius: 5px; white-space: nowrap;
+        }
+        .warn-banner .warn-link:hover { background: #f97316; color: #0f172a; }
+
+        .accordion-item {
+            background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+            margin-bottom: 10px; overflow: hidden;
+        }
+        .accordion-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 16px; cursor: pointer; user-select: none; gap: 10px;
+        }
+        .accordion-head:hover { background: rgba(249,115,22,0.06); }
+        .accordion-head .ac-title { font-weight: 700; color: #f8fafc; font-size: 0.92rem; }
+        .accordion-head .ac-count {
+            background: rgba(239,68,68,0.18); color: #fca5a5; font-weight: 700;
+            font-size: 0.75rem; padding: 3px 10px; border-radius: 20px; white-space: nowrap;
+        }
+        .accordion-head .ac-arrow { color: #64748b; transition: transform 0.2s; }
+        .accordion-item.open .ac-arrow { transform: rotate(180deg); }
+        .accordion-body {
+            display: none; padding: 0 16px 14px 16px; border-top: 1px solid #1e293b;
+        }
+        .accordion-item.open .accordion-body { display: block; }
+        .desa-kosong-chip {
+            display: inline-block; background: #1e293b; color: #e2e8f0;
+            border: 1px solid #334155; padding: 4px 12px; border-radius: 20px;
+            font-size: 0.8rem; margin: 6px 6px 0 0;
+        }
+        .search-kosong {
+            width: 100%; max-width: 320px; margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h3>🛡️ DASHBOARD ADMIN</h3>
+            <div class="who"><span class="role-pill">Admin</span>{{ session.email }}</div>
+        </div>
+        <div class="header-actions">
+            <a href="/">Beranda</a>
+            <a href="/kondisi">Peta & Chatbot</a><a href="/destana">🛡️ Destana</a>
+            <a href="{{ url_for('logout') }}">Keluar</a>
+        </div>
+    </div>
+
+    <div class="container">
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <ul class="flash-box">
+            {% for message in messages %}
+              <li>✅ {{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        <!-- ALERT RINGKASAN: DATA DESA BELUM TERCATAT -->
+        {% if total_desa_kosong > 0 %}
+        <div class="warn-banner">
+            <div class="warn-text">
+                ⚠️ <strong>{{ total_desa_kosong }} desa</strong> di <strong>{{ total_kec_kosong }} kecamatan</strong>
+                belum memiliki data tercatat.
+            </div>
+            <a href="#" class="warn-link" onclick="showTab('kosong', document.getElementById('btn-tab-kosong')); return false;">Lihat Detail →</a>
+        </div>
+        {% else %}
+        <div class="warn-banner is-ok">
+            <div class="warn-text">✅ Semua desa pada peta sudah memiliki data tercatat.</div>
+        </div>
+        {% endif %}
+
+        <div class="stat-grid">
+            <div class="stat-card"><div class="num">{{ total_kecamatan }}</div><div class="label">Kecamatan</div></div>
+            <div class="stat-card"><div class="num">{{ total_desa }}</div><div class="label">Desa</div></div>
+            <div class="stat-card"><div class="num">{{ total_warga_wajib_edukasi | int }}</div><div class="label">Warga Wajib Edukasi</div></div>
+            <div class="stat-card"><div class="num">{{ total_rentan | int }}</div><div class="label">Total Kelompok Rentan</div></div>
+            <div class="stat-card" style="border-top-color:#22c55e;"><div class="num" style="color:#86efac;">{{ total_orang_teredukasi_laporan | int }}</div><div class="label">Orang Teredukasi (Laporan Petugas)</div></div>
+            <div class="stat-card" style="border-top-color:#16a34a;"><div class="num" style="color:#4ade80;">{{ persen_realisasi_keseluruhan }}%</div><div class="label">Persentase Realisasi Edukasi (Real, KBB)</div></div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="showTab('statistik')">📊 Statistik Kecamatan</button>
+            <button class="tab-btn" onclick="showTab('akun')">👤 Kelola Akun</button>
+            <button class="tab-btn" onclick="showTab('desa')">🏘️ Kelola Data Desa</button>
+            <button class="tab-btn" onclick="showTab('laporan')">📋 Laporan Edukasi Petugas</button>
+            <button class="tab-btn" onclick="showTab('ai-knowledge')">🤖 Knowledge AI</button>
+            <button class="tab-btn" onclick="showTab('topografi')">🗺️ Topografi Manual</button>
+            <button class="tab-btn" onclick="showTab('potensi-bencana')">🌋 Potensi Bencana</button>
+            <button class="tab-btn" id="btn-tab-kosong" onclick="showTab('kosong')">
+                ⚠️ Data Kosong
+                {% if total_desa_kosong > 0 %}<span class="badge" style="background:rgba(239,68,68,0.25); color:#fca5a5; margin-left:4px;">{{ total_desa_kosong }}</span>{% endif %}
+            </button>
+        </div>
+
+        <!-- TAB: STATISTIK -->
+        <div class="tab-panel active" id="tab-statistik">
+            <div class="card">
+                <h3>Ringkasan per Kecamatan</h3>
+                <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Kecamatan</th><th>Terpapar</th><th>Total Rentan</th>
+                            <th>% Rentan</th><th>Kategori</th><th>Kelas Risiko</th>
+                            <th>Topografi</th><th>Risiko + Topografi</th>
+                            <th>% Prioritas Warga Teredukasi</th><th>% Realisasi Edukasi (Real)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for kec_key, k in kec_list %}
+                        <tr>
+                            <td>{{ k.Kecamatan }}</td>
+                            <td>{{ k.Terpapar_Kecamatan | int }}</td>
+                            <td>{{ k.Total_Rentan_Kec | int }}</td>
+                            <td>{{ k.Persen_Rentan_Kec }}%</td>
+                            <td><span class="badge badge-{{ k.Kategori_Rentan_Kec | lower }}">{{ k.Kategori_Rentan_Kec }}</span></td>
+                            <td>{{ k.Kelas_Risiko_Kec }}</td>
+                            <td>{{ k.Kategori_Topografi_Kec }} ({{ k.Elevasi_M_Kec | int }} mdpl)</td>
+                            <td><span class="badge badge-{{ k.Kategori_Risiko_Gabungan_Kec | lower }}">{{ k.Kategori_Risiko_Gabungan_Kec }}</span> <small>({{ k.Skor_Risiko_Gabungan_Kec }})</small></td>
+                            <td>{{ k.Persen_Teredukasi_Kecamatan }}%</td>
+                            <td style="color:#4ade80; font-weight:700;">{{ k.Persen_Realisasi_Edukasi_Kec }}%</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="10" class="empty-msg">Belum ada data kecamatan.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: KELOLA AKUN -->
+        <div class="tab-panel" id="tab-akun">
+            <div class="card">
+                <h3>Tambah Akun Baru</h3>
+                <form class="form-grid" action="{{ url_for('admin_tambah_akun') }}" method="POST">
+                    <div>
+                        <label>Email</label>
+                        <input type="email" name="email" required placeholder="nama@bpbdkbb.go.id">
+                    </div>
+                    <div>
+                        <label>Password</label>
+                        <input type="password" name="password" required placeholder="Password awal">
+                    </div>
+                    <div>
+                        <label>Role</label>
+                        <select name="role">
+                            <option value="petugas">Petugas</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button type="submit" class="btn btn-orange">+ Tambah Akun</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card">
+                <h3>Daftar Akun</h3>
+                <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Email</th><th>Role</th><th>Ubah Role</th><th>Aksi</th></tr></thead>
+                    <tbody>
+                        {% for user_id, info in users.items() %}
+                        <tr>
+                            <td>{{ info.email }}</td>
+                            <td><span class="badge badge-default">{{ info.role | capitalize }}</span></td>
+                            <td>
+                                <form class="inline-form" action="{{ url_for('admin_edit_akun', user_id=user_id) }}" method="POST">
+                                    <select name="role" style="width:120px;">
+                                        <option value="petugas" {% if info.role == 'petugas' %}selected{% endif %}>Petugas</option>
+                                        <option value="admin" {% if info.role == 'admin' %}selected{% endif %}>Admin</option>
+                                    </select>
+                                    <button type="submit" class="btn btn-orange">Simpan</button>
+                                </form>
+                            </td>
+                            <td>
+                                <form action="{{ url_for('admin_hapus_akun', user_id=user_id) }}" method="POST" onsubmit="return confirm('Hapus akun {{ info.email }}?');">
+                                    <button type="submit" class="btn btn-red">Hapus</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="empty-msg">Belum ada akun terdaftar.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: KELOLA DATA DESA -->
+        <div class="tab-panel" id="tab-desa">
+            <div class="card">
+                <h3>Kelola Data Desa</h3>
+                <p style="color:#94a3b8; font-size:0.85rem; margin-top:-8px;">
+                    Ubah angka lalu klik "Simpan" pada baris terkait. Persentase & kategori rentan dihitung ulang otomatis.
+                </p>
+                <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Desa</th><th>Kecamatan</th><th>Warga Wajib Edukasi</th>
+                            <th>Rentan Balita/Lansia</th><th>Rentan Miskin</th><th>Rentan Disabilitas</th>
+                            <th>% Rentan</th><th>Kategori</th><th>% Realisasi Edukasi (Real)</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for desa_key, d in desa_list %}
+                        <tr class="desa-edit-form">
+                            <form action="{{ url_for('admin_edit_desa', desa_key=desa_key) }}" method="POST">
+                            <td>{{ d.Desa }}</td>
+                            <td>{{ d.Kecamatan }}</td>
+                            <td><input type="number" name="warga_wajib_edukasi" value="{{ d.Warga_Wajib_Edukasi_Desa | int }}" min="0"></td>
+                            <td><input type="number" name="rentan_balita_lansia" value="{{ d.Rentan_BalitaLansia_Desa | int }}" min="0"></td>
+                            <td><input type="number" name="rentan_miskin" value="{{ d.Rentan_Miskin_Desa | int }}" min="0"></td>
+                            <td><input type="number" name="rentan_disabilitas" value="{{ d.Rentan_Disabilitas_Desa | int }}" min="0"></td>
+                            <td>{{ d.Persen_Rentan_Desa }}%</td>
+                            <td><span class="badge badge-{{ d.Kategori_Rentan_Desa | lower }}">{{ d.Kategori_Rentan_Desa }}</span></td>
+                            <td style="color:#4ade80; font-weight:700;">
+                                {{ d.Persen_Realisasi_Edukasi_Desa }}%
+                                <div style="color:#64748b; font-weight:400; font-size:0.75rem;">
+                                    ({{ d.Jumlah_Teredukasi_Aktual_Desa | int }} orang)
+                                </div>
+                            </td>
+                            <td><button type="submit" class="btn btn-orange">Simpan</button></td>
+                            </form>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="10" class="empty-msg">Belum ada data desa. Pastikan file Excel sumber tersedia di folder data/.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: LAPORAN EDUKASI -->
+        <div class="tab-panel" id="tab-laporan">
+            <div class="card">
+                <h3>Laporan Kegiatan Edukasi dari Petugas</h3>
+                <p style="color:#94a3b8; font-size:0.9rem; margin-top:-8px;">
+                    Total orang teredukasi dari seluruh laporan: <strong style="color:#f97316;">{{ total_orang_teredukasi_laporan | int }} orang</strong>
+                    <span style="color:#64748b;">(dihitung dari jumlah KK yang hadir &times; 4)</span>
+                </p>
+                <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Tanggal</th><th>Petugas</th><th>Kecamatan</th><th>Desa</th><th>Jumlah KK</th><th>Orang Teredukasi</th><th>Deskripsi Kegiatan</th></tr></thead>
+                    <tbody>
+                        {% for l in laporan_list %}
+                        <tr>
+                            <td>{{ l.tanggal }}</td>
+                            <td>{{ l.petugas_email }}</td>
+                            <td>{{ l.kecamatan }}</td>
+                            <td>{{ l.desa }}</td>
+                            <td>{{ l.jumlah_kk }}</td>
+                            <td><strong style="color:#f97316;">{{ l.jumlah_orang_teredukasi }}</strong></td>
+                            <td>{{ l.deskripsi }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="empty-msg">Belum ada laporan edukasi yang masuk.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: KNOWLEDGE AI / RAG -->
+        <div class="tab-panel" id="tab-ai-knowledge">
+            <div class="card">
+                <h3>🤖 Knowledge Base AI — RAG</h3>
+                <p style="color:#94a3b8;line-height:1.6;">
+                    Hanya Admin yang dapat menambahkan panduan. File diunggah <b>langsung dari browser ke Supabase Storage</b>,
+                    sehingga dokumen besar tidak melewati batas payload Vercel. Setelah upload selesai, server memproses dokumen,
+                    memecahnya menjadi potongan pengetahuan, dan menyimpannya di Supabase untuk retrieval saat user bertanya.
+                </p>
+                <form id="aiUploadForm" class="form-grid">
+                    <input type="hidden" id="aiCsrfToken" value="{{ csrf_token }}">
+                    <div style="grid-column:1/-1;">
+                        <label>Dokumen panduan (PDF/DOCX/TXT/MD, maksimal 50 MB)</label>
+                        <input id="aiDocumentFile" type="file" accept=".pdf,.docx,.txt,.md" required>
+                    </div>
+                    <div style="grid-column:1/-1;">
+                        <div id="aiUploadStatus" style="display:none;padding:12px;border-radius:8px;background:#0f172a;color:#cbd5e1;"></div>
+                        <div id="aiUploadProgressWrap" style="display:none;margin-top:10px;background:#1e293b;border-radius:999px;height:10px;overflow:hidden;">
+                            <div id="aiUploadProgress" style="width:0%;height:100%;background:#f59e0b;transition:width .2s;"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <button class="btn btn-orange" id="aiUploadButton" type="submit">📚 Upload & Pelajari</button>
+                    </div>
+                </form>
+            </div>
+            <div class="card">
+                <h3>➕ Tambahkan Informasi Baru</h3>
+                <form method="POST" action="{{ url_for('admin_ai_add_text') }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                    <div class="form-grid">
+                        <div><label>Judul</label><input type="text" name="title" maxlength="200" placeholder="Contoh: SOP Penanganan Longsor" required></div>
+                        <div style="grid-column:1/-1;"><label>Isi panduan/informasi</label><textarea name="content" rows="7" required style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid #334155;color:#f8fafc;padding:10px;border-radius:5px;resize:vertical;" placeholder="Masukkan aturan, SOP, prosedur, atau informasi resmi..."></textarea></div>
+                    </div>
+                    <button class="btn btn-orange" type="submit" style="margin-top:10px;">💾 Simpan ke Knowledge Base</button>
+                </form>
+            </div>
+            <div class="card">
+                <h3>📖 Panduan yang Sudah Dipelajari</h3>
+                {% if ai_knowledge_documents %}
+                <div class="table-wrap"><table><thead><tr><th>Dokumen</th><th>Bagian</th><th>Ukuran File</th><th>Ditambahkan Oleh</th><th>Waktu</th><th>Aksi</th></tr></thead><tbody>
+                {% for doc in ai_knowledge_documents %}<tr><td>{{ doc.filename }}</td><td>{{ doc.chunk_count }}</td><td>{{ doc.file_size or 0 }} byte</td><td>{{ doc.uploaded_by }}</td><td>{{ doc.uploaded_at }}</td>
+<td>
+<form method="POST" action="{{ url_for('admin_ai_delete') }}" onsubmit="return confirm('Hapus dokumen ini dari Knowledge Base?');">
+<input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="document_id" value="{{ doc.id }}">
+<button class="btn btn-red" type="submit">Hapus</button>
+</form>
+</td></tr>{% endfor %}
+                </tbody></table></div>
+                {% else %}<div class="empty-msg">Belum ada panduan. Upload dokumen pertama untuk mengaktifkan RAG.</div>{% endif %}
+            </div>
+        </div>
+
+        <!-- TAB: TOPOGRAFI MANUAL -->
+        <div class="tab-panel" id="tab-topografi">
+            <div class="card">
+                <h3>🗺️ Input Topografi Manual via Gambar</h3>
+                <p style="color:#94a3b8;line-height:1.6;">
+                    Upload gambar peta topografi/ketinggian wilayah (yang sudah ada label nama kecamatan/desa
+                    &amp; gradasi warna dataran rendah&ndash;sedang&ndash;tinggi). AI akan membaca gambar dan
+                    memperkirakan <b>proporsi</b> tiap kategori topografi per wilayah &mdash; tidak dianggap
+                    seragam satu warna untuk satu desa/kecamatan. Hasil AI selalu tampil sebagai
+                    <b>pratinjau yang bisa dikoreksi</b> dulu sebelum disimpan permanen.
+                </p>
+
+                <div class="form-grid">
+                    <div style="grid-column:1/-1;">
+                        <label>Level input</label>
+                        <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:6px;">
+                            <label style="display:flex;align-items:center;gap:6px;font-weight:normal;">
+                                <input type="radio" name="topoScope" value="kbb" checked> Seluruh KBB (per kecamatan)
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;font-weight:normal;">
+                                <input type="radio" name="topoScope" value="kecamatan"> Per Kecamatan
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;font-weight:normal;">
+                                <input type="radio" name="topoScope" value="desa"> Per Desa
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="topoKecamatanWrap" style="display:none;">
+                        <label>Pilih Kecamatan</label>
+                        <select id="topoKecamatanSelect">
+                            <option value="">-- pilih kecamatan --</option>
+                            {% for k in topografi_kecamatan_list %}
+                            <option value="{{ k.clean }}">{{ k.nama }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div id="topoDesaChipsWrap" style="grid-column:1/-1;display:none;">
+                        <label>Desa yang akan dianalisis dari gambar ini</label>
+                        <div id="topoDesaChips" style="color:#cbd5e1;font-size:13px;line-height:1.8;"></div>
+                    </div>
+
+                    <div style="grid-column:1/-1;">
+                        <label>Gambar peta topografi (PNG/JPG/JPEG/WEBP, maksimal 8 MB)</label>
+                        <input id="topoImageFile" type="file" accept=".png,.jpg,.jpeg,.webp">
+                    </div>
+
+                    <div style="grid-column:1/-1;">
+                        <div id="topoStatus" style="display:none;padding:12px;border-radius:8px;background:#0f172a;color:#cbd5e1;"></div>
+                    </div>
+
+                    <div>
+                        <button class="btn btn-orange" id="topoAnalisisBtn" type="button">🔎 Analisis dengan AI</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" id="topoPreviewCard" style="display:none;">
+                <h3>📝 Pratinjau Hasil AI &mdash; boleh dikoreksi sebelum disimpan</h3>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr>
+                            <th>Wilayah</th><th>% Rendah</th><th>% Sedang</th><th>% Tinggi</th>
+                            <th>Kategori Dominan</th><th>Catatan AI</th>
+                        </tr></thead>
+                        <tbody id="topoPreviewBody"></tbody>
+                    </table>
+                </div>
+                <button class="btn btn-orange" id="topoSimpanBtn" type="button" style="margin-top:12px;">💾 Simpan Permanen</button>
+            </div>
+
+            <div class="card">
+                <h3>📊 Status Topografi Saat Ini per Kecamatan</h3>
+                {% if kec_list %}
+                <div class="table-wrap"><table><thead><tr>
+                    <th>Kecamatan</th><th>Kategori Topografi</th><th>Sumber Data</th><th>Kategori Risiko Gabungan</th>
+                </tr></thead><tbody>
+                {% for kec_key, kec in kec_list %}
+                <tr>
+                    <td>{{ kec.get('Kecamatan', kec_key) }}</td>
+                    <td>{{ kec.get('Kategori_Topografi_Kec', '-') }}</td>
+                    <td>
+                        {% if kec.get('Topografi_Sumber_Kec') == 'manual_ai_gambar' %}
+                            ✅ Input manual (gambar)
+                        {% elif kec.get('Kategori_Topografi_Kec') %}
+                            🌐 API / tabel referensi
+                        {% else %}
+                            &ndash;
+                        {% endif %}
+                    </td>
+                    <td>{{ kec.get('Kategori_Risiko_Gabungan_Kec', '-') }}</td>
+                </tr>
+                {% endfor %}
+                </tbody></table></div>
+                {% else %}<div class="empty-msg">Belum ada data kecamatan.</div>{% endif %}
+            </div>
+        </div>
+
+        <!-- TAB: POTENSI BENCANA -->
+        <div class="tab-panel" id="tab-potensi-bencana">
+            <div class="card">
+                <h3>🌋 Potensi Bencana &mdash; Ancaman &times; Kerentanan &divide; Kapasitas</h3>
+                <p style="color:#94a3b8;line-height:1.6;">
+                    Skor ini dihitung otomatis dari rumus umum manajemen risiko bencana:
+                    <b>Potensi Bencana = (Ancaman &times; Kerentanan) &divide; Kapasitas</b>.
+                    <b>Ancaman</b> = jumlah <u>jenis bencana</u> yang dicentang berpotensi terjadi di desa itu
+                    dibagi total jenis yang tersedia di checklist (mis. Batujajar dicentang Banjir + Tanah Longsor
+                    + Gempa Bumi &rarr; ancaman = 3 dari total jenis yang ada).
+                    <b>Kerentanan</b> diambil dari data % Rentan yang sudah ada, dan
+                    <b>Kapasitas</b> dari skor Destana yang sudah ada.
+                    Selama sebuah desa belum pernah diisi checklist Ancaman-nya, skor Potensi Bencana desa itu akan
+                    tertulis &quot;Belum diisi&quot; &mdash; sistem tidak menebak nilainya sendiri.
+                </p>
+            </div>
+
+            <div class="card">
+                <h3>🗂️ Kelola Jenis Bencana (Checklist Ancaman)</h3>
+                <p style="color:#94a3b8; font-size:0.85rem; margin-top:-8px;">
+                    Jenis di bawah muncul sebagai pilihan checklist Ancaman pada tabel desa. Tambah jenis baru kalau
+                    ada bahaya lain yang belum tercantum. Jenis bawaan sistem tidak bisa dihapus.
+                </p>
+                <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+                    {% for jenis in daftar_jenis_ancaman %}
+                    <span class="badge badge-default" style="display:inline-flex; align-items:center; gap:6px; padding:6px 10px;">
+                        {{ jenis.icon }} {{ jenis.label }}
+                        {% if jenis.custom %}
+                        <form action="{{ url_for('admin_potensi_bencana_hapus_jenis', jenis_id=jenis.id) }}" method="POST"
+                              style="display:inline;" onsubmit="return confirm('Hapus jenis ancaman &quot;{{ jenis.label }}&quot; dari checklist?');">
+                            <button type="submit" title="Hapus jenis ancaman ini"
+                                    style="background:none; border:none; color:#fca5a5; cursor:pointer; font-weight:bold; padding:0 0 0 4px;">&times;</button>
+                        </form>
+                        {% endif %}
+                    </span>
+                    {% endfor %}
+                </div>
+                <form action="{{ url_for('admin_potensi_bencana_tambah_jenis') }}" method="POST" style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <input type="text" name="label_jenis_baru" placeholder="Nama jenis bencana baru, mis. Abrasi Pantai" required style="flex:1; min-width:220px;">
+                    <button type="submit" class="btn btn-orange">+ Tambah Jenis Ancaman</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h3>📝 Input / Edit Checklist Ancaman per Desa</h3>
+                <p style="color:#94a3b8; font-size:0.85rem; margin-top:-8px;">
+                    Centang semua jenis bencana yang berpotensi terjadi di desa tsb, lalu klik &quot;Simpan&quot; pada
+                    baris terkait. Skor &amp; kategori Potensi Bencana dihitung ulang otomatis begitu tersimpan.
+                </p>
+                <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Desa</th><th>Kecamatan</th>
+                            <th>Ancaman (checklist jenis bencana)</th><th>Catatan Ancaman</th>
+                            <th>% Rentan</th><th>Kapasitas (Destana)</th>
+                            <th>Skor Potensi Bencana</th><th>Kategori</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for desa_key, d in desa_list %}
+                        {% set pb = potensi_bencana_info.get(desa_key, {}) %}
+                        {% set jenis_terpilih_desa = pb.get('jenis_terpilih', []) %}
+                        <tr class="desa-edit-form">
+                            <form action="{{ url_for('admin_potensi_bencana_simpan', desa_key=desa_key) }}" method="POST">
+                            <td>{{ d.Desa }}</td>
+                            <td>{{ d.Kecamatan }}</td>
+                            <td>
+                                <div style="display:flex; flex-direction:column; gap:2px; min-width:170px;">
+                                    {% for jenis in daftar_jenis_ancaman %}
+                                    <label style="display:flex; align-items:center; gap:6px; font-size:0.82rem; font-weight:normal;">
+                                        <input type="checkbox" name="jenis_ancaman" value="{{ jenis.id }}"
+                                               {% if jenis.id in jenis_terpilih_desa %}checked{% endif %}>
+                                        {{ jenis.icon }} {{ jenis.label }}
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                            </td>
+                            <td><input type="text" name="catatan_ancaman" value="{{ d.get('Ancaman_Catatan_Desa', '') }}" placeholder="opsional"></td>
+                            <td>{{ d.Persen_Rentan_Desa }}%</td>
+                            <td>{{ pb.get('kapasitas', 0) }}%</td>
+                            <td>
+                                {% if pb.get('lengkap') %}
+                                    {{ pb.get('skor') }}
+                                {% else %}
+                                    <span style="color:#64748b;font-style:italic;">Belum diisi</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if pb.get('kategori') %}
+                                <span class="badge badge-{{ pb.get('kategori') | lower }}">{{ pb.get('kategori') }}</span>
+                                {% else %}
+                                <span class="badge badge-default">&ndash;</span>
+                                {% endif %}
+                            </td>
+                            <td><button type="submit" class="btn btn-orange">Simpan</button></td>
+                            </form>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="9" class="empty-msg">Belum ada data desa.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>📊 Ringkasan Potensi Bencana per Kecamatan</h3>
+                <p style="color:#94a3b8; font-size:0.85rem; margin-top:-8px;">
+                    Rata-rata skor dari desa-desa yang sudah diisi checklist Ancaman-nya di kecamatan tsb, dan
+                    gabungan jenis bencana yang tercentang di seluruh desa dalam kecamatan itu.
+                </p>
+                {% if kec_list %}
+                <div class="table-wrap"><table><thead><tr>
+                    <th>Kecamatan</th><th>Desa Terisi Ancaman</th><th>Skor Potensi Bencana (rata-rata)</th><th>Kategori</th><th>Jenis Ancaman (gabungan)</th>
+                </tr></thead><tbody>
+                {% for kec_key, kec in kec_list %}
+                {% set rk = potensi_bencana_kec_ringkas.get(kec_key, {}) %}
+                <tr>
+                    <td>{{ kec.get('Kecamatan', kec_key) }}</td>
+                    <td>{{ rk.get('jumlah_desa_terisi', 0) }} / {{ rk.get('jumlah_desa', 0) }}</td>
+                    <td>
+                        {% if rk.get('skor') is not none %}
+                            {{ rk.get('skor') }}
+                        {% else %}
+                            <span style="color:#64748b;font-style:italic;">Belum diisi</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if rk.get('kategori') %}
+                        <span class="badge badge-{{ rk.get('kategori') | lower }}">{{ rk.get('kategori') }}</span>
+                        {% else %}
+                        <span class="badge badge-default">&ndash;</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size:0.82rem; color:#94a3b8;">{{ rk.get('jenis_label_text', '-') }}</td>
+                </tr>
+                {% endfor %}
+                </tbody></table></div>
+                {% else %}<div class="empty-msg">Belum ada data kecamatan.</div>{% endif %}
+            </div>
+        </div>
+
+        <!-- TAB: DATA KOSONG -->
+        <div class="tab-panel" id="tab-kosong">
+            <div class="card">
+                <h3>Desa &amp; Kecamatan yang Datanya Belum Tercatat</h3>
+                <p style="color:#94a3b8; font-size:0.85rem; margin-top:-8px;">
+                    Dibandingkan dari batas wilayah administratif (peta) dengan data yang sudah diinput di tab
+                    "Kelola Data Desa". Desa berikut ada di peta tapi datanya belum masuk ke sistem —
+                    segera lengkapi lewat file Excel sumber (<code>data/Data_Desa_Longsor.xlsx</code>) lalu restart server.
+                </p>
+
+                {% if total_desa_kosong > 0 %}
+
+                <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom:20px;">
+                    <div class="stat-card" style="border-top-color:#ef4444;">
+                        <div class="num" style="color:#fca5a5;">{{ total_desa_kosong }}</div>
+                        <div class="label">Desa Belum Tercatat</div>
+                    </div>
+                    <div class="stat-card" style="border-top-color:#f97316;">
+                        <div class="num" style="color:#fdba74;">{{ total_kec_kosong }}</div>
+                        <div class="label">Kecamatan Terdampak</div>
+                    </div>
+                </div>
+
+                <input
+                    type="text"
+                    id="searchKosong"
+                    class="search-kosong"
+                    placeholder="🔍 Cari nama desa atau kecamatan..."
+                    onkeyup="filterKosong()"
+                >
+
+                <div id="accordionKosong">
+                    {% for kec in kec_kosong_list %}
+                    <div class="accordion-item" data-kec="{{ kec.Kecamatan | lower }}">
+                        <div class="accordion-head" onclick="this.parentElement.classList.toggle('open')">
+                            <span class="ac-title">📍 {{ kec.Kecamatan }}</span>
+                            <span style="display:flex; align-items:center; gap:10px;">
+                                <span class="ac-count">{{ kec.jumlah_desa_kosong }} desa belum tercatat</span>
+                                <span class="ac-arrow">▾</span>
+                            </span>
+                        </div>
+                        <div class="accordion-body">
+                            {% for nama_desa in kec.daftar_desa %}
+                            <span class="desa-kosong-chip" data-desa="{{ nama_desa | lower }}">{{ nama_desa }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <p id="noResultKosong" class="empty-msg" style="display:none;">Tidak ada desa/kecamatan yang cocok dengan pencarian.</p>
+
+                {% else %}
+                <p class="empty-msg">✅ Semua desa pada peta sudah memiliki data tercatat. Tidak ada yang perlu dilengkapi.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function () {
+    const form = document.getElementById('aiUploadForm');
+    if (!form) return;
+
+    const fileInput = document.getElementById('aiDocumentFile');
+    const button = document.getElementById('aiUploadButton');
+    const status = document.getElementById('aiUploadStatus');
+    const progressWrap = document.getElementById('aiUploadProgressWrap');
+    const progress = document.getElementById('aiUploadProgress');
+    const csrf = document.getElementById('aiCsrfToken').value;
+
+    const supabaseUrl = {{ supabase_url|tojson }};
+    const supabasePublishableKey = {{ supabase_publishable_key|tojson }};
+    const bucket = {{ supabase_bucket|tojson }};
+
+    function showStatus(message, ok) {
+        status.style.display = 'block';
+        status.textContent = message;
+        status.style.color = ok ? '#86efac' : '#fca5a5';
+    }
+
+    form.addEventListener('submit', async function (event) {
+        event.preventDefault();
+
+        const file = fileInput.files[0];
+        if (!file) {
+            showStatus('Pilih dokumen terlebih dahulu.', false);
+            return;
+        }
+
+        const allowed = ['pdf', 'docx', 'txt', 'md'];
+        const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+        if (!allowed.includes(ext)) {
+            showStatus('Format yang didukung: PDF, DOCX, TXT, dan MD.', false);
+            return;
+        }
+
+        if (file.size > 50 * 1024 * 1024) {
+            showStatus('Ukuran dokumen maksimal 50 MB.', false);
+            return;
+        }
+
+        if (!supabaseUrl || !supabasePublishableKey) {
+            showStatus('Konfigurasi Supabase frontend belum tersedia.', false);
+            return;
+        }
+
+        button.disabled = true;
+        progressWrap.style.display = 'block';
+        progress.style.width = '5%';
+        showStatus('Menyiapkan upload...', true);
+
+        try {
+            // Hanya metadata kecil yang dikirim ke Vercel.
+            const prep = await fetch('{{ url_for("admin_ai_create_upload_url") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    filename: file.name,
+                    file_size: file.size,
+                    content_type: file.type || 'application/octet-stream',
+                    _csrf_token: csrf
+                })
+            });
+
+            const prepData = await prep.json();
+            if (!prep.ok) throw new Error(prepData.error || 'Gagal menyiapkan upload.');
+
+            progress.style.width = '15%';
+            showStatus('Mengunggah file langsung ke Supabase Storage...', true);
+
+            const sb = window.supabase.createClient(supabaseUrl, supabasePublishableKey);
+            const uploadResult = await sb.storage.from(bucket).uploadToSignedUrl(
+                prepData.path,
+                prepData.token,
+                file,
+                { contentType: file.type || 'application/octet-stream' }
+            );
+
+            if (uploadResult.error) {
+                throw new Error(uploadResult.error.message || 'Upload Supabase gagal.');
+            }
+
+            progress.style.width = '75%';
+            showStatus('Upload selesai. Server sedang membaca dan mempelajari dokumen...', true);
+
+            const processResp = await fetch('{{ url_for("admin_ai_process_uploaded") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    path: prepData.path,
+                    filename: file.name,
+                    file_size: file.size,
+                    _csrf_token: csrf
+                })
+            });
+
+            const processData = await processResp.json();
+            if (!processResp.ok) throw new Error(processData.error || 'Pemrosesan RAG gagal.');
+
+            progress.style.width = '100%';
+            showStatus('✓ ' + processData.message, true);
+            setTimeout(() => window.location.reload(), 1200);
+
+        } catch (err) {
+            console.error('[AI Upload]', err);
+            showStatus('Gagal: ' + (err.message || err), false);
+            progress.style.width = '0%';
+        } finally {
+            button.disabled = false;
+        }
+    });
+})();
+</script>
+<script>
+(function () {
+    const csrfToken = "{{ csrf_token }}";
+
+    const scopeRadios = document.querySelectorAll('input[name="topoScope"]');
+    const kecWrap = document.getElementById('topoKecamatanWrap');
+    const kecSelect = document.getElementById('topoKecamatanSelect');
+    const desaChipsWrap = document.getElementById('topoDesaChipsWrap');
+    const desaChips = document.getElementById('topoDesaChips');
+    const fileInput = document.getElementById('topoImageFile');
+    const analisisBtn = document.getElementById('topoAnalisisBtn');
+    const simpanBtn = document.getElementById('topoSimpanBtn');
+    const statusEl = document.getElementById('topoStatus');
+    const previewCard = document.getElementById('topoPreviewCard');
+    const previewBody = document.getElementById('topoPreviewBody');
+
+    if (!analisisBtn) return; // tab tidak ada di halaman ini
+
+    let previewContext = null; // {scope, kecamatan_clean}
+
+    function scopeAktif() {
+        const el = document.querySelector('input[name="topoScope"]:checked');
+        return el ? el.value : 'kbb';
+    }
+
+    function showStatus(message, ok) {
+        statusEl.style.display = 'block';
+        statusEl.textContent = message;
+        statusEl.style.color = ok ? '#86efac' : '#fca5a5';
+    }
+
+    function perbaruiVisibilitasField() {
+        const scope = scopeAktif();
+        kecWrap.style.display = (scope === 'kecamatan' || scope === 'desa') ? 'block' : 'none';
+        desaChipsWrap.style.display = 'none';
+        desaChips.innerHTML = '';
+        if (scope === 'desa' && kecSelect.value) {
+            muatDaftarDesa(kecSelect.value);
+        }
+    }
+
+    async function muatDaftarDesa(kecamatanClean) {
+        try {
+            const resp = await fetch('/admin/topografi/wilayah/' + encodeURIComponent(kecamatanClean));
+            const data = await resp.json();
+            const daftar = (data.desa || []).map(d => d.nama);
+            if (daftar.length === 0) {
+                desaChipsWrap.style.display = 'none';
+                return;
+            }
+            desaChips.textContent = daftar.join(', ');
+            desaChipsWrap.style.display = 'block';
+        } catch (err) {
+            desaChipsWrap.style.display = 'none';
+        }
+    }
+
+    scopeRadios.forEach(r => r.addEventListener('change', perbaruiVisibilitasField));
+    kecSelect.addEventListener('change', perbaruiVisibilitasField);
+
+    function kategoriDominan(pr, ps, pt) {
+        if (pt >= pr && pt >= ps) return 'Dataran Tinggi / Pegunungan';
+        if (ps >= pr && ps >= pt) return 'Dataran Sedang / Perbukitan';
+        return 'Dataran Rendah';
+    }
+
+    function renderPreview(hasil) {
+        previewBody.innerHTML = '';
+        hasil.forEach((item, idx) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${item.wilayah}</td>
+                <td><input type="number" min="0" max="100" step="0.1" data-idx="${idx}" data-field="persen_rendah" value="${item.persen_rendah}" style="width:70px;background:#0f172a;border:1px solid #334155;color:#f8fafc;padding:4px;border-radius:4px;"></td>
+                <td><input type="number" min="0" max="100" step="0.1" data-idx="${idx}" data-field="persen_sedang" value="${item.persen_sedang}" style="width:70px;background:#0f172a;border:1px solid #334155;color:#f8fafc;padding:4px;border-radius:4px;"></td>
+                <td><input type="number" min="0" max="100" step="0.1" data-idx="${idx}" data-field="persen_tinggi" value="${item.persen_tinggi}" style="width:70px;background:#0f172a;border:1px solid #334155;color:#f8fafc;padding:4px;border-radius:4px;"></td>
+                <td class="topo-kategori-dominan" data-idx="${idx}">${item.kategori_dominan}</td>
+                <td><input type="text" data-idx="${idx}" data-field="catatan" value="${(item.catatan || '').replace(/"/g, '&quot;')}" style="width:100%;background:#0f172a;border:1px solid #334155;color:#f8fafc;padding:4px;border-radius:4px;"></td>
+            `;
+            previewBody.appendChild(tr);
+        });
+
+        previewBody.querySelectorAll('input[type="number"]').forEach(inp => {
+            inp.addEventListener('input', function () {
+                const idx = this.dataset.idx;
+                const row = previewBody.querySelectorAll('tr')[idx];
+                const pr = parseFloat(row.querySelector('[data-field="persen_rendah"]').value) || 0;
+                const ps = parseFloat(row.querySelector('[data-field="persen_sedang"]').value) || 0;
+                const pt = parseFloat(row.querySelector('[data-field="persen_tinggi"]').value) || 0;
+                row.querySelector('.topo-kategori-dominan').textContent = kategoriDominan(pr, ps, pt);
+            });
+        });
+
+        previewCard.style.display = hasil.length ? 'block' : 'none';
+    }
+
+    function ambilHasilDariPreview() {
+        const rows = previewBody.querySelectorAll('tr');
+        const hasil = [];
+        rows.forEach(row => {
+            hasil.push({
+                wilayah: row.children[0].textContent.trim(),
+                persen_rendah: parseFloat(row.querySelector('[data-field="persen_rendah"]').value) || 0,
+                persen_sedang: parseFloat(row.querySelector('[data-field="persen_sedang"]').value) || 0,
+                persen_tinggi: parseFloat(row.querySelector('[data-field="persen_tinggi"]').value) || 0,
+                catatan: row.querySelector('[data-field="catatan"]').value || '',
+            });
+        });
+        return hasil;
+    }
+
+    analisisBtn.addEventListener('click', async function () {
+        const scope = scopeAktif();
+        const kecamatanClean = kecSelect.value || '';
+        const file = fileInput.files[0];
+
+        if ((scope === 'kecamatan' || scope === 'desa') && !kecamatanClean) {
+            showStatus('Pilih kecamatan dulu.', false);
+            return;
+        }
+        if (!file) {
+            showStatus('Pilih gambar peta topografi dulu.', false);
+            return;
+        }
+
+        const allowedExt = ['png', 'jpg', 'jpeg', 'webp'];
+        const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+        if (!allowedExt.includes(ext)) {
+            showStatus('Format yang didukung: PNG, JPG, JPEG, WEBP.', false);
+            return;
+        }
+        if (file.size > 8 * 1024 * 1024) {
+            showStatus('Ukuran gambar maksimal 8 MB.', false);
+            return;
+        }
+
+        analisisBtn.disabled = true;
+        previewCard.style.display = 'none';
+        showStatus('AI sedang membaca gambar, mohon tunggu...', true);
+
+        try {
+            const formData = new FormData();
+            formData.append('scope', scope);
+            formData.append('kecamatan_clean', kecamatanClean);
+            formData.append('gambar', file);
+            formData.append('_csrf_token', csrfToken);
+
+            const resp = await fetch('/admin/topografi/analisis', { method: 'POST', body: formData });
+            const data = await resp.json();
+
+            if (!resp.ok) throw new Error(data.error || 'Gagal menganalisis gambar.');
+
+            previewContext = { scope: scope, kecamatan_clean: kecamatanClean };
+            renderPreview(data.hasil || []);
+            showStatus(`✓ AI selesai membaca gambar (${data.hasil.length} wilayah). Cek & koreksi angkanya sebelum disimpan.`, true);
+        } catch (err) {
+            showStatus('Gagal: ' + (err.message || err), false);
+        } finally {
+            analisisBtn.disabled = false;
+        }
+    });
+
+    simpanBtn.addEventListener('click', async function () {
+        if (!previewContext) return;
+        const hasil = ambilHasilDariPreview();
+
+        simpanBtn.disabled = true;
+        showStatus('Menyimpan ke sistem...', true);
+
+        try {
+            const resp = await fetch('/admin/topografi/simpan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    scope: previewContext.scope,
+                    kecamatan_clean: previewContext.kecamatan_clean,
+                    hasil: hasil,
+                    _csrf_token: csrfToken,
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error((data.gagal && data.gagal.join('; ')) || data.error || 'Gagal menyimpan.');
+
+            showStatus(`✓ Tersimpan (${data.diterapkan} wilayah). Memuat ulang halaman...`, true);
+            setTimeout(() => window.location.reload(), 1200);
+        } catch (err) {
+            showStatus('Gagal: ' + (err.message || err), false);
+        } finally {
+            simpanBtn.disabled = false;
+        }
+    });
+})();
+</script>
+<script>
+        function showTab(name, btnEl) {
+            document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + name).classList.add('active');
+            var activeBtn = btnEl || (typeof event !== 'undefined' ? event.currentTarget : null);
+            if (activeBtn) activeBtn.classList.add('active');
+        }
+
+        function filterKosong() {
+            var q = document.getElementById('searchKosong').value.trim().toLowerCase();
+            var items = document.querySelectorAll('#accordionKosong .accordion-item');
+            var anyVisible = false;
+
+            items.forEach(function (item) {
+                var kecMatch = item.getAttribute('data-kec').includes(q);
+                var chips = item.querySelectorAll('.desa-kosong-chip');
+                var desaMatch = false;
+
+                chips.forEach(function (chip) {
+                    var match = chip.getAttribute('data-desa').includes(q);
+                    chip.style.display = match || q === '' ? 'inline-block' : 'none';
+                    if (match) desaMatch = true;
+                });
+
+                var show = q === '' || kecMatch || desaMatch;
+                item.style.display = show ? '' : 'none';
+                if (show) {
+                    anyVisible = true;
+                    if (q !== '' && desaMatch) item.classList.add('open');
+                }
+            });
+
+            document.getElementById('noResultKosong').style.display = anyVisible ? 'none' : 'block';
+        }
+    </script>
+</body>
+</html>
