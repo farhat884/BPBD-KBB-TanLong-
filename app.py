@@ -23,9 +23,21 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-hanya-untuk-lokal')
 cred_path = os.environ.get('FIREBASE_CREDENTIALS', 'firebase_key.json')
 
 if not firebase_admin._apps:
-    cred = credentials.Certificate(cred_path)
+    # Cek apakah ada environment variable kredensial di Vercel
+    firebase_json_env = os.environ.get('FIREBASE_CONFIG_JSON')
+    
+    if firebase_json_env:
+        # Menggunakan environment variable dari Vercel
+        cred_dict = json.loads(firebase_json_env)
+        cred = credentials.Certificate(cred_dict)
+    elif os.path.exists('firebase_key.json'):
+        # Fallback untuk running lokal
+        cred = credentials.Certificate('firebase_key.json')
+    else:
+        raise FileNotFoundError("Kredensial Firebase tidak ditemukan.")
+
     firebase_admin.initialize_app(cred, {
-        'databaseURL': os.environ.get('FIREBASE_DB_URL', 'https://BPBD-KBB.firebaseio.com')
+        'databaseURL': os.environ.get('FIREBASE_DB_URL', 'https://database-kamu.firebaseio.com')
     })
 
 print("Berhasil terhubung ke Firebase!")
