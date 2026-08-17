@@ -10,6 +10,21 @@ from firebase_admin import credentials, db
 import folium
 
 from ml_engine import get_ml_clustered_data, clean_name, kategori_rentan, update_desa_excel
+import json
+import os
+import re
+
+firebase_json_env = os.getenv(
+    "FIREBASE_CREDENTIALS"
+)  # Sesuaikan nama variabel kamu
+
+if firebase_json_env:
+    # Memotong karakter berlebih di luar kurung kurawal '{ ... }'
+    match = re.search(r"\{.*\}", firebase_json_env, re.DOTALL)
+    if match:
+        cred_dict = json.loads(match.group(0))
+    else:
+        raise ValueError("Struktur JSON Firebase tidak ditemukan.")
 
 #bpbd_kbb_super_rahasia_@2024_jangan_bocor
 
