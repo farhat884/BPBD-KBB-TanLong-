@@ -37,7 +37,7 @@ if not firebase_admin._apps:
         raise FileNotFoundError("Kredensial Firebase tidak ditemukan.")
 
     firebase_admin.initialize_app(cred, {
-        'databaseURL': os.environ.get('FIREBASE_DB_URL', 'https://database-kamu.firebaseio.com')
+        'databaseURL': os.environ.get('FIREBASE_DB_URL', 'https://bpbd-kbb-default-rtdb.asia-southeast1.firebasedatabase.app/')
     })
 
 print("Berhasil terhubung ke Firebase!")
