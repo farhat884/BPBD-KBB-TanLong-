@@ -15,7 +15,12 @@ from ml_engine import get_ml_clustered_data, clean_name, kategori_rentan, update
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-hanya-untuk-lokal')
+firebase_json_env = os.getenv("FIREBASE_CREDENTIALS") # sesuaikan nama env kamu
 
+if firebase_json_env:
+    # Membersihkan whitespace/newline ekstra di awal dan akhir
+    clean_json_str = firebase_json_env.strip()
+    cred_dict = json.loads(clean_json_str)
 # ========================================================
 # KONEKSI KE FIREBASE
 # ========================================================
