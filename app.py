@@ -3030,6 +3030,153 @@ Gunakan acuan rumus dan istilah resmi BPBD KBB berikut jika pengguna bertanya:
 
 Jika pengguna bertanya di luar konteks kebencanaan atau data spesifik, jawablah secara umum, profesional, dan tetap relevan dengan KBB/kesiapsiagaan bencana. Jika pengguna mencari data angka desa/kecamatan tertentu tetapi namanya tidak terdeteksi di database, ingatkan mereka untuk menyebutkan nama desa/kecamatan secara eksplisit.
 """
+def cari_wilayah_berdasarkan_realisasi(pesan):
+    """
+    Mencari desa/kecamatan berdasarkan persentase realisasi edukasi aktual.
+    Digunakan untuk pertanyaan seperti:
+    - daerah mana yang sudah 100% diedukasi
+    - desa mana yang sudah selesai edukasi
+    - wilayah mana yang belum 100%
+    """
+
+    pesan_lower = pesan.lower()
+
+    # Apakah pertanyaan membahas realisasi edukasi?
+    kata_edukasi = [
+        "edukasi",
+        "teredukasi",
+        "edukasi",
+        "realisasi",
+        "sudah diedukasi",
+        "sudah teredukasi"
+    ]
+
+    if not any(kata in pesan_lower for kata in kata_edukasi):
+        return None
+
+    # -----------------------------------------
+    # Tentukan target persentase
+    # -----------------------------------------
+
+    target = None
+
+    if "100%" in pesan_lower or "100 persen" in pesan_lower:
+        target = 100
+
+    elif "50%" in pesan_lower or "50 persen" in pesan_lower:
+        target = 50
+
+    elif "75%" in pesan_lower or "75 persen" in pesan_lower:
+        target = 75
+
+    # -----------------------------------------
+    # Ambil semua desa
+    # -----------------------------------------
+
+    desa_hasil = []
+
+    for d in desa_dict.values():
+
+        persen = safe_number(
+            d.get("Persen_Realisasi_Edukasi_Desa", 0)
+        )
+
+        if target is not None:
+
+            if persen >= target:
+                desa_hasil.append({
+                    "wilayah": d.get("Desa", "-"),
+                    "kecamatan": d.get("Kecamatan", "-"),
+                    "persen": persen,
+                    "jumlah": d.get(
+                        "Jumlah_Teredukasi_Aktual_Desa", 0
+                    ),
+                    "target": d.get(
+                        "Warga_Wajib_Edukasi_Desa", 0
+                    )
+                })
+
+    # -----------------------------------------
+    # Ambil semua kecamatan
+    # -----------------------------------------
+
+    kec_hasil = []
+
+    for k in kec_dict.values():
+
+        persen = safe_number(
+            k.get("Persen_Realisasi_Edukasi_Kec", 0)
+        )
+
+        if target is not None:
+
+            if persen >= target:
+                kec_hasil.append({
+                    "wilayah": k.get("Kecamatan", "-"),
+                    "persen": persen,
+                    "jumlah": k.get(
+                        "Jumlah_Teredukasi_Aktual_Kec", 0
+                    ),
+                    "target": k.get(
+                        "Total_Warga_Wajib_Edukasi_Kecamatan", 0
+                    )
+                })
+
+    # -----------------------------------------
+    # Jika tidak ada target angka
+    # -----------------------------------------
+
+    if target is None:
+        return None
+
+    # -----------------------------------------
+    # Buat jawaban
+    # -----------------------------------------
+
+    if not desa_hasil and not kec_hasil:
+        return (
+            f"Belum ada wilayah yang mencapai "
+            f"**{target}% realisasi edukasi**."
+        )
+
+    reply = (
+        f"### Wilayah dengan realisasi edukasi ≥ {target}%\n\n"
+    )
+
+    if desa_hasil:
+
+        reply += "**Desa:**\n"
+
+        for d in sorted(
+            desa_hasil,
+            key=lambda x: x["persen"],
+            reverse=True
+        ):
+            reply += (
+                f"- **Desa {d['wilayah']}** "
+                f"(Kec. {d['kecamatan']}) — "
+                f"**{d['persen']:.2f}%** "
+                f"({int(d['jumlah'])} dari "
+                f"{int(d['target'])} warga)\n"
+            )
+
+    if kec_hasil:
+
+        reply += "\n**Kecamatan:**\n"
+
+        for k in sorted(
+            kec_hasil,
+            key=lambda x: x["persen"],
+            reverse=True
+        ):
+            reply += (
+                f"- **Kecamatan {k['wilayah']}** — "
+                f"**{k['persen']:.2f}%** "
+                f"({int(k['jumlah'])} dari "
+                f"{int(k['target'])} warga)\n"
+            )
+
+    return reply
 
 
 # 3. Route API Chatbot
@@ -3050,9 +3197,21 @@ def api_chat():
 
     # 1. Cek Glosarium
     penjelasan = cari_penjelasan_glosarium(pesan)
+    
     if penjelasan:
         return jsonify({"reply": penjelasan})
+    
+    
+    # 2. Cari wilayah berdasarkan persentase realisasi edukasi
+    hasil_realisasi = cari_wilayah_berdasarkan_realisasi(pesan)
+    
+    if hasil_realisasi:
+        return jsonify({
+            "reply": hasil_realisasi
+        })
 
+
+# 3. Cari kecocokan nama desa
     # 2. Cari kecocokan nama desa (lebih spesifik)
     desa_cocok = None
     for key, d in desa_dict.items():
