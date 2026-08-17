@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Sistem Peringatan Cuaca - BPBD KBB</title>
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #f8fafc; display: flex; flex-direction: column; height: 100vh; }
+        .header { background-color: #1e293b; border-bottom: 3px solid #f97316; padding: 15px 30px; display: flex; align-items: center; justify-content: space-between; }
+        .btn-back { color: #f97316; text-decoration: none; font-weight: bold; border: 1px solid #f97316; padding: 8px 20px; border-radius: 5px; transition: 0.3s; }
+        .btn-back:hover { background: #f97316; color: #fff; }
+        .content { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; }
+        
+        /* Animasi Radar Sederhana */
+        .radar { position: relative; width: 100px; height: 100px; border-radius: 50%; border: 2px solid #f97316; margin-bottom: 30px; }
+        .radar::before { content: ''; position: absolute; top: 50%; left: 50%; width: 50%; height: 2px; background: #f97316; transform-origin: left center; animation: scan 2s linear infinite; }
+        @keyframes scan { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        h1 { color: #fff; font-size: 2.5rem; margin-bottom: 10px; }
+        p { color: #94a3b8; font-size: 1.2rem; max-width: 600px; line-height: 1.6; }
+        .badge { background: #f97316; color: #fff; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 0.9rem; margin-bottom: 20px; display: inline-block;}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h3 style="margin:0;">EARLY EARLY WARNING SYSTEM (EEWS)</h3>
+        <div style="display:flex; align-items:center; gap:12px;">
+            {% if session.email %}
+                <a href="{{ url_for('dashboard_admin') if session.role == 'admin' else url_for('dashboard_petugas') }}" class="btn-back">📊 Dashboard</a>
+            {% else %}
+                <a href="{{ url_for('login') }}" class="btn-back">🔐 Login</a>
+            {% endif %}
+            <a href="/" class="btn-back">KEMBALI KE BERANDA</a>
+        </div>
+    </div>
+
+    <div class="content">
+        <div class="badge">TAHAP PENGEMBANGAN</div>
+        <div class="radar"></div>
+        <h1>Modul Cuaca Segera Hadir</h1>
+        <p>Kami sedang mengintegrasikan data API Sensor Cuaca dan Curah Hujan secara real-time untuk pemantauan peringatan dini bencana wilayah Kabupaten Bandung Barat.</p>
+    </div>
+</body>
+</html>

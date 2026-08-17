@@ -1,0 +1,82 @@
+{
+  "lembang": {
+    "elevasi_m": 1250,
+    "kategori_topografi": "Dataran Tinggi / Pegunungan",
+    "sumber": "fallback"
+  },
+  "parongpong": {
+    "elevasi_m": 1150,
+    "kategori_topografi": "Dataran Tinggi / Pegunungan",
+    "sumber": "fallback"
+  },
+  "cisarua": {
+    "elevasi_m": 1100,
+    "kategori_topografi": "Dataran Tinggi / Pegunungan",
+    "sumber": "fallback"
+  },
+  "cikalongwetan": {
+    "elevasi_m": 650,
+    "kategori_topografi": "Dataran Sedang / Perbukitan",
+    "sumber": "fallback"
+  },
+  "cipeundeuy": {
+    "elevasi_m": 550,
+    "kategori_topografi": "Dataran Sedang / Perbukitan",
+    "sumber": "fallback"
+  },
+  "ngamprah": {
+    "elevasi_m": 750,
+    "kategori_topografi": "Dataran Sedang / Perbukitan",
+    "sumber": "fallback"
+  },
+  "cipatat": {
+    "elevasi_m": 500,
+    "kategori_topografi": "Dataran Sedang / Perbukitan",
+    "sumber": "fallback"
+  },
+  "padalarang": {
+    "elevasi_m": 500,
+    "kategori_topografi": "Dataran Sedang / Perbukitan",
+    "sumber": "fallback"
+  },
+  "batujajar": {
+    "elevasi_m": 650,
+    "kategori_topografi": "Dataran Sedang / Perbukitan",
+    "sumber": "fallback"
+  },
+  "cihampelas": {
+    "elevasi_m": 500,
+    "kategori_topografi": "Dataran Sedang / Perbukitan",
+    "sumber": "fallback"
+  },
+  "cililin": {
+    "elevasi_m": 550,
+    "kategori_topografi": "Dataran Sedang / Perbukitan",
+    "sumber": "fallback"
+  },
+  "cipongkor": {
+    "elevasi_m": 600,
+    "kategori_topografi": "Dataran Sedang / Perbukitan",
+    "sumber": "fallback"
+  },
+  "rongga": {
+    "elevasi_m": 700,
+    "kategori_topografi": "Dataran Sedang / Perbukitan",
+    "sumber": "fallback"
+  },
+  "sindangkerta": {
+    "elevasi_m": 600,
+    "kategori_topografi": "Dataran Sedang / Perbukitan",
+    "sumber": "fallback"
+  },
+  "gununghalu": {
+    "elevasi_m": 650,
+    "kategori_topografi": "Dataran Sedang / Perbukitan",
+    "sumber": "fallback"
+  },
+  "saguling": {
+    "elevasi_m": 650,
+    "kategori_topografi": "Dataran Sedang / Perbukitan",
+    "sumber": "fallback"
+  }
+}

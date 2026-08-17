@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Checklist Destana - BPBD KBB</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#f8fafc}
+.header{background:#1e293b;border-bottom:3px solid #f97316;padding:15px 30px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.header h3{margin:0}.who{font-size:.82rem;color:#94a3b8}.role{background:#f97316;color:#0f172a;padding:3px 9px;border-radius:15px;font-weight:700;font-size:.7rem;margin-right:6px}
+.actions a{color:#f97316;text-decoration:none;border:1px solid #f97316;padding:7px 13px;border-radius:5px;margin-left:7px;font-size:.82rem}
+.container{max-width:1250px;margin:28px auto;padding:0 20px 60px}.card{background:#1e293b;border-radius:10px;padding:22px;margin-bottom:20px}
+h2,h3{margin-top:0}.muted{color:#94a3b8;font-size:.85rem;line-height:1.55}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.stat{background:#0f172a;padding:17px;border-radius:8px;border-left:4px solid #f97316}.num{font-size:1.7rem;font-weight:800}.label{color:#94a3b8;font-size:.78rem}
+table{width:100%;border-collapse:collapse;font-size:.84rem}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #334155}th{color:#f97316;font-size:.72rem;text-transform:uppercase}.table-wrap{overflow-x:auto}
+.badge{display:inline-block;padding:4px 9px;border-radius:20px;font-weight:700;font-size:.72rem}.ok{background:rgba(34,197,94,.18);color:#86efac}.no{background:rgba(239,68,68,.18);color:#fca5a5}.ref{background:rgba(148,163,184,.16);color:#cbd5e1}
+input,select{background:#0f172a;border:1px solid #334155;color:#f8fafc;padding:8px 10px;border-radius:5px;width:100%}input:focus,select:focus{outline:none;border-color:#f97316}
+.btn{border:0;padding:8px 13px;border-radius:5px;font-weight:700;cursor:pointer}.orange{background:#f97316;color:white}.red{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid #ef4444}.green{background:rgba(34,197,94,.15);color:#86efac;border:1px solid #22c55e}
+.formrow{display:grid;grid-template-columns:1fr auto;gap:8px}.indicator{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #334155}.flash{padding:10px 14px;background:rgba(34,197,94,.12);border:1px solid #22c55e;color:#bbf7d0;border-radius:7px;margin-bottom:18px}
+.admin-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}@media(max-width:800px){.admin-grid{grid-template-columns:1fr}}
+.small{font-size:.75rem;color:#64748b}
+</style>
+</head>
+<body>
+<div class="header">
+  <div><h3>🛡️ CHECKLIST DESA TANGGUH BENCANA</h3><div class="who"><span class="role">{{ 'Admin' if is_admin else 'Pengguna' }}</span>{{ session.email }}</div></div>
+  <div class="actions"><a href="/">Beranda</a><a href="/kondisi">Peta</a>{% if is_admin %}<a href="/dashboard-admin">Dashboard Admin</a>{% endif %}<a href="/logout">Keluar</a></div>
+</div>
+
+<div class="container">
+{% with messages=get_flashed_messages() %}{% if messages %}{% for m in messages %}<div class="flash">✅ {{ m }}</div>{% endfor %}{% endif %}{% endwith %}
+
+<div class="card">
+<h2>Penentuan Status Destana</h2>
+<p class="muted">
+Checklist ini menghitung persentase indikator aktif yang terpenuhi pada setiap desa.
+Jika persentasenya mencapai <strong style="color:#f97316">{{ "%.1f"|format(threshold) }}%</strong>, sistem memberi status otomatis <strong>Destana</strong>.
+Batas ini adalah aturan sistem dan dapat diubah Admin.
+</p>
+<div class="grid">
+<div class="stat"><div class="num">{{ daftar|length }}</div><div class="label">Desa yang terdata</div></div>
+<div class="stat"><div class="num">{{ indicators|length }}</div><div class="label">Indikator</div></div>
+<div class="stat"><div class="num">{{ daftar|selectattr('status','equalto','Destana')|list|length }}</div><div class="label">Memenuhi otomatis</div></div>
+<div class="stat"><div class="num">{{ "%.1f"|format(threshold) }}%</div><div class="label">Batas kelulusan</div></div>
+</div>
+</div>
+
+<div class="card">
+<h3>Daftar Desa</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Kecamatan</th><th>Desa</th><th>Kategori Data Destana 2026</th><th>Checklist</th><th>Realisasi</th><th>Status Otomatis</th><th>Aksi</th></tr></thead>
+<tbody>
+{% for d in daftar %}
+<tr>
+<td>{{ d.kecamatan }}</td><td><strong>{{ d.desa }}</strong></td>
+<td><span class="badge ref">{{ d.kategori_2026 }}</span></td>
+<td>{{ d.terpenuhi }}/{{ d.total }}</td>
+<td>{{ d.persen|round(1) }}%</td>
+<td><span class="badge {{ 'ok' if d.status == 'Destana' else 'no' }}">{{ d.status }}</span></td>
+<td><button class="btn orange" type="button" onclick="openModal('{{ d.key|e }}','{{ d.kecamatan|e }}','{{ d.desa|e }}')">Lihat Checklist</button></td>
+</tr>
+{% else %}<tr><td colspan="7">Belum ada data desa.</td></tr>{% endfor %}
+</tbody>
+</table>
+</div>
+</div>
+
+{% if is_admin %}
+<div class="admin-grid">
+<div class="card">
+<h3>⚙️ Pengaturan Batas Otomatis</h3>
+<form method="POST" action="{{ url_for('destana_settings') }}">
+<input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+<label class="muted">Persentase minimum indikator terpenuhi</label>
+<div class="formrow"><input type="number" name="threshold" min="1" max="100" step="0.1" value="{{ threshold }}"><button class="btn orange">Simpan</button></div>
+</form>
+<p class="small">Contoh: 80 berarti minimal 80% indikator aktif harus dicentang.</p>
+</div>
+<div class="card">
+<h3>➕ Tambah Indikator</h3>
+<form method="POST" action="{{ url_for('destana_tambah_indikator') }}">
+<input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+<div class="formrow"><input name="nama" maxlength="300" required placeholder="Nama indikator baru"><button class="btn orange">Tambah</button></div>
+</form>
+</div>
+</div>
+
+<div class="card">
+<h3>📝 Kelola Indikator Destana</h3>
+<p class="muted">Hanya Admin yang dapat mengubah atau menghapus indikator. Menonaktifkan indikator tidak menghapus riwayat checklist desa.</p>
+<div class="table-wrap"><table><thead><tr><th>Indikator</th><th>Status</th><th>Edit</th><th>Hapus</th></tr></thead><tbody>
+{% for id, info in indicators.items() %}
+<tr>
+<td>
+<form method="POST" action="{{ url_for('destana_edit_indikator', indicator_id=id) }}" class="formrow">
+<input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+<input name="nama" maxlength="300" required value="{{ info.nama }}">
+<input type="hidden" name="aktif" value="0">
+</td>
+<td><label><input type="checkbox" name="aktif" value="1" {% if info.aktif %}checked{% endif %} style="width:auto"> Aktif</label></td>
+<td><button class="btn orange">Simpan</button></form></td>
+<td>
+<form method="POST" action="{{ url_for('destana_hapus_indikator', indicator_id=id) }}" onsubmit="return confirm('Hapus indikator ini?')">
+<input type="hidden" name="_csrf_token" value="{{ csrf_token }}"><button class="btn red">Hapus</button>
+</form>
+</td>
+</tr>
+{% endfor %}
+</tbody></table></div>
+</div>
+{% endif %}
+</div>
+
+<div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:20;padding:25px;overflow:auto">
+<div class="card" style="max-width:650px;margin:30px auto">
+<div style="display:flex;justify-content:space-between;gap:10px"><h3 id="modalTitle">Checklist</h3><button class="btn red" onclick="closeModal()">Tutup</button></div>
+<form id="checkForm" method="POST">
+{% if is_admin %}<input type="hidden" name="_csrf_token" value="{{ csrf_token }}">{% endif %}
+<div id="checklist"></div>
+{% if is_admin %}<button class="btn orange" style="margin-top:16px">💾 Simpan Checklist</button>{% else %}<p class="muted">Mode lihat saja. Hanya Admin yang dapat mengubah checklist.</p>{% endif %}
+</form>
+</div></div>
+
+<script>
+const indicators={{ indicators|tojson }};
+const records={{ daftar|tojson }};
+const isAdmin={{ 'true' if is_admin else 'false' }};
+function openModal(key,kec,desa){
+ const d=records.find(x=>x.key===key); if(!d)return;
+ document.getElementById('modalTitle').textContent='Checklist — '+desa+' ('+kec+')';
+ document.getElementById('checkForm').action='/destana/checklist/'+encodeURIComponent(key);
+ let html='';
+ Object.keys(indicators).forEach(id=>{
+   const x=indicators[id]; if(!x.aktif)return;
+   const checked=d.checked && d.checked[id] ? 'checked' : '';
+   html+=`<div class="indicator"><label style="color:#e2e8f0">${escapeHtml(x.nama)}</label>${isAdmin?`<input type="checkbox" name="indicator_${id}" value="1" ${checked} style="width:20px;height:20px">`:`<span class="badge ${checked?'ok':'no'}">${checked?'Terpenuhi':'Belum'}</span>`}</div>`;
+ });
+ document.getElementById('checklist').innerHTML=html||'<p class="muted">Belum ada indikator aktif.</p>';
+ document.getElementById('modal').style.display='block';
+}
+function closeModal(){document.getElementById('modal').style.display='none'}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
+</script>
+</body></html>

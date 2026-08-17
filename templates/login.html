@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - BPBD KBB</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            background-image: radial-gradient(circle at top, #1e293b 0%, #0f172a 100%);
+            color: #f8fafc;
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh;
+        }
+        .login-card {
+            width: 100%; max-width: 400px;
+            background-color: rgba(30, 41, 59, 0.85);
+            border-top: 5px solid #f97316;
+            border-radius: 10px;
+            padding: 40px 35px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            animation: fadeIn 1s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .logo-text {
+            color: #f97316; font-size: 1rem; font-weight: bold;
+            letter-spacing: 2px; text-align: center; margin-bottom: 6px;
+        }
+        h2 {
+            text-align: center; margin: 0 0 30px 0; color: #ffffff; font-size: 1.5rem;
+        }
+        .flash-box {
+            background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444;
+            color: #fecaca; padding: 10px 15px; border-radius: 8px;
+            font-size: 0.9rem; list-style: none; margin: 0 0 20px 0;
+        }
+        .flash-box li { margin: 0; }
+        label {
+            display: block; margin-bottom: 6px; font-size: 0.9rem; color: #cbd5e1;
+        }
+        .field { margin-bottom: 20px; }
+        input[type="email"], input[type="password"] {
+            width: 100%; padding: 12px 14px; border-radius: 6px;
+            border: 1px solid #334155; background-color: #0f172a;
+            color: #f8fafc; font-size: 1rem; outline: none;
+            transition: border-color 0.3s;
+        }
+        input[type="email"]:focus, input[type="password"]:focus {
+            border-color: #f97316;
+        }
+        button[type="submit"] {
+            width: 100%; background: #f97316; color: #ffffff; border: none;
+            padding: 14px; font-size: 1.05rem; font-weight: bold;
+            border-radius: 6px; cursor: pointer; transition: 0.3s;
+            box-shadow: 0 4px 15px rgba(249, 115, 22, 0.4);
+            margin-top: 6px;
+        }
+        button[type="submit"]:hover {
+            background: #ea580c; transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(249, 115, 22, 0.6);
+        }
+        .back-link {
+            display: block; text-align: center; margin-top: 24px;
+            color: #94a3b8; text-decoration: none; font-size: 0.9rem;
+        }
+        .back-link:hover { color: #f97316; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="logo-text">BPBD KAB. BANDUNG BARAT</div>
+        <h2>Login Petugas / Admin</h2>
+
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <ul class="flash-box">
+            {% for message in messages %}
+              <li>⚠️ {{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        <form action="/login" method="POST">
+            <div class="field">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" placeholder="nama@bpbdkbb.go.id" required>
+            </div>
+
+            <div class="field">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="••••••••" required>
+            </div>
+
+            <button type="submit">Masuk</button>
+        </form>
+
+        <a href="/" class="back-link">&larr; Kembali ke Halaman Utama</a>
+    </div>
+</body>
+</html>
