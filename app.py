@@ -1643,7 +1643,7 @@ def generate_map():
                             ">
  
                                 <b>
-                                    Persentase Prioritas Warga yang Teredukasi
+                                    Persentase Prioritas Warga yang Teredukasi (Kecamatan)
                                 </b>
  
                             </td>
