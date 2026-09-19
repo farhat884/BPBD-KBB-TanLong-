@@ -15,6 +15,7 @@ import folium
 from ml_engine import get_ml_clustered_data, clean_name, kategori_rentan, update_desa_excel, terapkan_topografi_manual, bagikan_kuota_sisa_terbesar
 import topografi_manual
 import potensi_bencana
+import kajian_risiko
 import json
 import os
 import re
@@ -789,6 +790,24 @@ def sync_potensi_bencana_ancaman():
 
 
 sync_potensi_bencana_ancaman()
+
+
+# ========================================================
+# KAJIAN RISIKO BENCANA (tabulasi BPBD, lihat kajian_risiko.py)
+# ========================================================
+# Tingkat risiko per jenis bencana dibaca LANGSUNG dari file matriks
+# di folder data/ (bukan dihitung dari rumus). Kalau file tidak ada /
+# strukturnya berubah, MATRIKS_KAJIAN = None dan tab peta menampilkan
+# info "data belum tersedia" -- aplikasi lain tetap jalan normal.
+MATRIKS_KAJIAN = kajian_risiko.muat_matriks_default(app.root_path)
+
+
+@lru_cache(maxsize=1)
+def _js_kajian_risiko():
+    """Isi templates/kajian_risiko_map.js (dibaca sekali, dipakai tiap generate peta)."""
+    path = os.path.join(app.root_path, "templates", "kajian_risiko_map.js")
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
 
 
 def sync_realisasi_edukasi():
@@ -1719,60 +1738,19 @@ def generate_map():
     color_map_destana_desa = {k: get_color_realisasi(v) for k, v in destana_score_desa.items()}
     color_map_destana_kec = {k: get_color_realisasi(v) for k, v in destana_score_kec.items()}
 
-    # Skor Potensi Bencana (Ancaman x Kerentanan / Kapasitas) --
-    # lihat potensi_bencana.py & hitung_potensi_bencana_semua_desa().
-    # Dipakai untuk mode warna "potensi_bencana" DAN untuk menampilkan
-    # daftar jenis ancaman di popup/tooltip desa & kecamatan.
-    (
-        potensi_bencana_info_map,
-        potensi_bencana_kec_map,
-        _daftar_jenis_ancaman_map,
-    ) = hitung_potensi_bencana_semua_desa()
-
-    # Wilayah yang skornya "Belum diisi" (admin belum pernah
-    # mencentang checklist Ancaman) diwarnai abu-abu netral, BUKAN
-    # ditebak sebagai hijau/merah.
-    WARNA_PB_BELUM_DIISI = "#94a3b8"
-
-    color_map_pb_desa = {}
-    for key_d, info in potensi_bencana_info_map.items():
-        skor = info.get('skor')
-        color_map_pb_desa[key_d] = (
-            get_color_realisasi(100 - skor) if skor is not None else WARNA_PB_BELUM_DIISI
-        )
-
-    color_map_pb_kec = {}
-    for key_k, info in potensi_bencana_kec_map.items():
-        skor = info.get('skor')
-        color_map_pb_kec[key_k] = (
-            get_color_realisasi(100 - skor) if skor is not None else WARNA_PB_BELUM_DIISI
-        )
+    # Tab "Kajian Risiko Bencana": warna, tooltip & legenda-nya dibangun
+    # di sisi JS dari data tabulasi (lihat kajian_risiko.py &
+    # templates/kajian_risiko_map.js) -- datanya disiapkan di bagian
+    # "3. LEGEND" di bawah, setelah GeoJSON desa & kecamatan terbaca.
 
     # Tooltip peta kini DIPISAH per mode/tab (realisasi, prioritas,
-    # destana, potensi_bencana) supaya tiap tab cuma menampilkan info
+    # destana; tab kajian risiko dibangun di JS) supaya tiap tab cuma menampilkan info
     # yang relevan buat tab itu -- bukan 1 tooltip raksasa gabungan
     # semua info seperti sebelumnya. Diisi di dalam loop kecamatan &
     # desa di bawah, lalu dikirim ke JS (lihat __TOOLTIP_MAP_*_JSON__)
     # supaya applyColorMode() bisa ganti isi tooltip TANPA reload.
     tooltip_map_kec = {}
     tooltip_map_desa = {}
-
-    def _bullet_list_jenis(items):
-        """
-        Ubah list jenis ancaman ({'id','label','icon'}) jadi daftar
-        bullet HTML siap tampil di tooltip mode "potensi_bencana"
-        (dipakai baik untuk desa maupun kecamatan), supaya ancamannya
-        kebaca jelas satu per satu, bukan cuma teks gabungan koma.
-        """
-        if not items:
-            return (
-                "<span style=\"font-size:10px;color:#7f8c8d;\">"
-                "<i>Belum diisi checklist Ancaman</i></span><br>"
-            )
-        return "".join(
-            f"&nbsp;&nbsp;• {it.get('icon', '')} {it.get('label', '')}<br>"
-            for it in items
-        )
 
     def _bullet_list_indikator(items, kosong_teks):
         """
@@ -1941,16 +1919,6 @@ def generate_map():
                 warna_destana_kec = '#16a34a' if status_destana_kec == 'Destana' else '#dc2626'
                 label_destana_kec = '✅ Destana' if status_destana_kec == 'Destana' else '⚠️ Belum memenuhi'
 
-                # --- Potensi Bencana (rata-rata desa dalam kecamatan) ---
-                pb_info_kec = potensi_bencana_kec_map.get(key_k, {})
-                pb_skor_kec = pb_info_kec.get('skor')
-                pb_kategori_kec = pb_info_kec.get('kategori') or '-'
-                pb_jenis_teks_kec = pb_info_kec.get('jenis_label_text', '-')
-                pb_terisi_kec = pb_info_kec.get('jumlah_desa_terisi', 0)
-                pb_total_desa_kec = pb_info_kec.get('jumlah_desa', 0)
-                pb_warna_kec = {
-                    'Tinggi': '#dc2626', 'Sedang': '#d97706', 'Rendah': '#16a34a',
-                }.get(pb_kategori_kec, '#64748b')
  
  
                 # ---------------------------------------------
@@ -1963,8 +1931,8 @@ def generate_map():
                 #                        % prioritas warga teredukasi
                 #   - destana          : warga terpapar, skor destana,
                 #                        daftar indikator yang kurang
-                #   - potensi_bencana  : ancaman, skor potensi bencana,
-                #                        kelompok rentan, skor destana
+                #   - kajian risiko    : dibangun di JS dari tabulasi
+                #                        (templates/kajian_risiko_map.js)
                 # ---------------------------------------------
 
                 _kec_terpapar = int(k.get('Terpapar_Kecamatan', 0))
@@ -2005,7 +1973,12 @@ def generate_map():
                     f"&nbsp;&nbsp;• Ibu Hamil: <b>{int(k.get('Rentan_IbuHamil_Kec', 0)):,}</b><br>"
                     f"&nbsp;&nbsp;<i>Total: {_kec_total_rentan:,} jiwa</i><br>"
                     f"🎯 Prioritas Warga Teredukasi: "
-                    f"<b style=\"color:#d35400;\">{_kec_persen_prioritas:.2f}%</b>"
+                    f"<b style=\"color:#d35400;\">{_kec_persen_prioritas:.2f}%</b><br>"
+                    # Keterangan kecil (permintaan BPBD): jelaskan basis
+                    # hitung persentase. Level kecamatan = porsi satu
+                    # kecamatan terhadap total seluruh KBB.
+                    f"<span style=\"font-size:10px;color:#7f8c8d;\">"
+                    f"<i>Persentase satu kecamatan dari total seluruh KBB</i></span>"
                     + _tt_wrap_close
                 )
 
@@ -2024,21 +1997,6 @@ def generate_map():
                     f"<i>Skor per kecamatan = rata-rata skor desa. Untuk detail "
                     f"indikator yang sudah/belum dicentang, hover ke masing-masing "
                     f"desa.</i></span>"
-                    + _tt_wrap_close
-                )
-
-                tooltip_map_kec[key_k]['potensi_bencana'] = (
-                    _tt_wrap_open + _tt_head_kec +
-                    f"🌋 <u>Ancaman (gabungan desa):</u><br>"
-                    f"{_bullet_list_jenis(pb_info_kec.get('jenis_detail', []))}"
-                    f"Potensi Bencana (rata-rata): "
-                    f"<b style=\"color:{pb_warna_kec};\">"
-                    f"{f'{pb_skor_kec:.2f}' if pb_skor_kec is not None else '-'}</b> "
-                    f"<span style=\"font-size:10px;color:{pb_warna_kec};\">"
-                    f"({pb_kategori_kec if pb_skor_kec is not None else 'Belum diisi'})</span><br>"
-                    f"👨‍👩‍👧 Kelompok Rentan: <b>{_kec_total_rentan:,}</b> jiwa<br>"
-                    f"🛡️ Skor Destana: <b style=\"color:{warna_destana_kec};\">"
-                    f"{skor_destana_kec:.2f}%</b>"
                     + _tt_wrap_close
                 )
 
@@ -2073,6 +2031,41 @@ def generate_map():
     desa_geojson = (
         load_local_geojson_files()
     )
+
+    # ----------------------------------------------------
+    # DATA KAJIAN RISIKO BENCANA (dari tabulasi BPBD)
+    # ----------------------------------------------------
+    # Dicocokkan ke fitur GeoJSON dengan kunci GABUNGAN
+    # kecamatan|desa (ada nama desa kembar antar kecamatan).
+    # Dipakai untuk: popup desa (ringkasan semua bencana) &
+    # JS peta (warna/tooltip/legenda tab Kajian Risiko Bencana).
+    # ----------------------------------------------------
+
+    _kec_fitur_kajian = (
+        kec_geojson.get("features", [])
+        if os.path.exists(kec_file)
+        else []
+    )
+
+    kajian_data_peta = kajian_risiko.siapkan_data_peta(
+        MATRIKS_KAJIAN,
+        desa_geojson["features"],
+        _kec_fitur_kajian,
+        get_nama_desa
+    )
+
+    if kajian_data_peta["tersedia"]:
+        _lap = kajian_data_peta["laporan"]
+        if _lap["matriks_tak_terpakai"]:
+            print(
+                "⚠️  Kajian Risiko: desa di matriks yang TIDAK ketemu "
+                "di peta: " + "; ".join(_lap["matriks_tak_terpakai"])
+            )
+        if _lap["desa_tanpa_data"]:
+            print(
+                "⚠️  Kajian Risiko: desa di peta yang TIDAK ada di "
+                "matriks: " + "; ".join(_lap["desa_tanpa_data"])
+            )
  
  
     def style_desa(feature):
@@ -2199,15 +2192,17 @@ def generate_map():
             warna_destana_desa = '#16a34a' if status_destana_desa == 'Destana' else '#dc2626'
             label_destana_desa = '✅ Destana' if status_destana_desa == 'Destana' else '⚠️ Belum memenuhi'
 
-            # --- Potensi Bencana (Ancaman x Kerentanan / Kapasitas) ---
-            pb_info_desa = potensi_bencana_info_map.get(key_d, {})
-            pb_lengkap_desa = pb_info_desa.get('lengkap', False)
-            pb_skor_desa = pb_info_desa.get('skor')
-            pb_kategori_desa = pb_info_desa.get('kategori') or '-'
-            pb_jenis_teks_desa = pb_info_desa.get('jenis_label_text', '-')
-            pb_warna_desa = {
-                'Tinggi': '#dc2626', 'Sedang': '#d97706', 'Rendah': '#16a34a',
-            }.get(pb_kategori_desa, '#64748b')
+            # --- Kajian Risiko Bencana (ringkasan semua jenis bencana) ---
+            # Dari tabulasi BPBD, bukan rumus. Kunci pakai kecamatan
+            # dari GeoJSON (bukan d['Kecamatan']) supaya desa kembar
+            # antar kecamatan tidak tertukar.
+            _key_kajian_desa = (
+                kajian_risiko.key_js(feature["properties"].get("nm_kecamatan", ""))
+                + "|" + kajian_risiko.key_js(raw_desa)
+            )
+            popup_kajian_html = kajian_risiko.popup_ringkasan_html(
+                kajian_data_peta["desa"].get(_key_kajian_desa, {}).get("h", {})
+            )
  
  
             popup_html = f"""
@@ -2518,18 +2513,14 @@ def generate_map():
                             <td colspan="2" style="padding: 6px;">
 
                                 <b>
-                                    🌋 Potensi Bencana
+                                    🗺️ Kajian Risiko Bencana
                                 </b>
-                                <span style="float:right; color: {pb_warna_desa};">
-                                    <b>
-                                        {f"{pb_skor_desa:.2f}" if pb_lengkap_desa else '-'}
-                                    </b>
-                                    ({pb_kategori_desa if pb_lengkap_desa else 'Belum diisi'})
-                                </span>
                                 <br>
                                 <span style="font-size: 10px; color: #7f8c8d;">
-                                    Jenis Ancaman: {pb_jenis_teks_desa}
+                                    Tingkat risiko per jenis bencana (dari tabulasi BPBD)
                                 </span>
+                                <br>
+                                {popup_kajian_html}
 
                             </td>
 
@@ -2550,8 +2541,6 @@ def generate_map():
  
                         Warga Wajib Diedukasi Desa ÷
                         Warga Terpapar Kecamatan × 100%
-                        <br>
-                        Potensi Bencana = (Ancaman × Kerentanan) ÷ Kapasitas Destana
  
                     </div>
  
@@ -2612,7 +2601,13 @@ def generate_map():
                 f"&nbsp;&nbsp;• Disabilitas: <b>{int(d.get('Rentan_Disabilitas_Desa', 0)):,}</b><br>"
                 f"&nbsp;&nbsp;<i>Total: {_desa_total_rentan:,} jiwa</i><br>"
                 f"🎯 Prioritas Warga Teredukasi: "
-                f"<b style=\"color:#d35400;\">{persen_teredukasi:.2f}%</b>"
+                f"<b style=\"color:#d35400;\">{persen_teredukasi:.2f}%</b><br>"
+                # Keterangan kecil (permintaan BPBD): jelaskan basis
+                # hitung persentase. Level desa = porsi satu desa
+                # terhadap total kecamatan induknya.
+                f"<span style=\"font-size:10px;color:#7f8c8d;\">"
+                f"<i>Persentase satu desa dari total Kec. "
+                f"{d.get('Kecamatan', '')}</i></span>"
                 + _tt_wrap_close_d
             )
 
@@ -2627,21 +2622,6 @@ def generate_map():
                 f"<u>Sudah dicentang:</u>{_list_dicentang_html}</div>"
                 f"<div style=\"font-size:10px;margin-top:4px;\">"
                 f"<u>Kurang:</u>{_list_kurang_html}</div>"
-                + _tt_wrap_close_d
-            )
-
-            tooltip_map_desa[key_d]['potensi_bencana'] = (
-                _tt_wrap_open_d + _tt_head_desa +
-                f"🌋 <u>Ancaman:</u><br>"
-                f"{_bullet_list_jenis(pb_info_desa.get('jenis_detail', []))}"
-                f"Potensi Bencana: "
-                f"<b style=\"color:{pb_warna_desa};\">"
-                f"{f'{pb_skor_desa:.2f}' if pb_lengkap_desa else '-'}</b> "
-                f"<span style=\"font-size:10px;color:{pb_warna_desa};\">"
-                f"({pb_kategori_desa if pb_lengkap_desa else 'Belum diisi'})</span><br>"
-                f"👨‍👩‍👧 Kelompok Rentan: <b>{_desa_total_rentan:,}</b> jiwa<br>"
-                f"🛡️ Skor Destana: <b style=\"color:{warna_destana_desa};\">"
-                f"{skor_destana_desa:.2f}%</b>"
                 + _tt_wrap_close_d
             )
 
@@ -2746,6 +2726,49 @@ def generate_map():
 
 
     <!-- =============================================
+         DROPDOWN JENIS BENCANA (khusus tab Kajian Risiko Bencana)
+         Muncul di atas tombol tab hanya saat tab itu aktif; isi
+         opsi dari kajian_risiko.opsi_dropdown_html().
+    ============================================== -->
+
+    <div
+        id="kajian-picker"
+        style="
+            display:none;
+            align-items:center;
+            gap:8px;
+            max-width:520px;
+            background-color:rgba(14,17,23,0.92);
+            border:1px solid #00ffcc;
+            border-radius:8px;
+            padding:6px 10px;
+            font-family:monospace;
+            font-size:11px;
+            color:#00ffcc;
+            box-shadow:0 0 15px rgba(0,255,204,0.12);
+        "
+    >
+        <label for="select-bencana-kajian" style="font-weight:bold;white-space:nowrap;">Jenis Bencana:</label>
+        <select
+            id="select-bencana-kajian"
+            onchange="setKajianHazard(this.value)"
+            style="
+                flex:1;
+                min-width:0;
+                background:#0f172a;
+                color:#fff;
+                border:1px solid #00ffcc;
+                border-radius:4px;
+                padding:4px 6px;
+                font-family:monospace;
+                font-size:11px;
+                cursor:pointer;
+            "
+        >__KAJIAN_OPSI_HTML__</select>
+    </div>
+
+
+    <!-- =============================================
          TOGGLE MODE ANALISIS PETA
          (realisasi, prioritas, atau skor Destana)
     ============================================== -->
@@ -2790,7 +2813,7 @@ def generate_map():
             "
         >🎯 Prioritas Edukasi</button>
         <button id="btn-mode-destana" onclick="applyColorMode('destana')" title="Warna menunjukkan rata-rata skor Destana desa dalam kecamatan" style="flex:1;padding:8px 6px;border:none;cursor:pointer;font-weight:bold;background:#0f172a;color:#00ffcc;">🛡️ Destana</button>
-        <button id="btn-mode-potensi-bencana" onclick="applyColorMode('potensi_bencana')" title="Warna menunjukkan skor Potensi Bencana (Ancaman x Kerentanan / Kapasitas). Abu-abu = admin belum mengisi checklist Ancaman." style="flex:1;padding:8px 6px;border:none;cursor:pointer;font-weight:bold;background:#0f172a;color:#00ffcc;">🌋 Potensi Bencana</button>
+        <button id="btn-mode-kajian-risiko" onclick="applyColorMode('kajian_risiko')" title="Tingkat risiko per jenis bencana, langsung dari tabulasi Kajian Risiko Bencana BPBD. Pilih jenis bencana lewat dropdown yang muncul di atas tombol ini." style="flex:1.3;padding:8px 6px;border:none;cursor:pointer;font-weight:bold;background:#0f172a;color:#00ffcc;">🗺️ Kajian Risiko Bencana</button>
     </div>
 
 
@@ -2875,7 +2898,7 @@ def generate_map():
             margin:-2px 0 6px 0;
         "></div>
 
-        <div style="
+        <div id="legend-kec-minmax" style="
             display:flex;
             justify-content:space-between;
             font-size:10px;
@@ -2884,6 +2907,10 @@ def generate_map():
             <span id="legend-kec-min">0% <br><i>(belum ada yang teredukasi)</i></span>
             <span id="legend-kec-max" style="text-align:right;">100% <br><i>(semua warga prioritas teredukasi)</i></span>
         </div>
+
+        <!-- Legenda kategori (Rendah/Sedang/Tinggi) khusus tab Kajian Risiko Bencana;
+             isinya diisi JS (kajianAturLegenda) -->
+        <div id="legend-kec-kajian" style="display:none;"></div>
 
         <div id="legend-kec-status-note" style="
             display:none;
@@ -2979,7 +3006,7 @@ def generate_map():
             margin:-2px 0 6px 0;
         "></div>
 
-        <div style="
+        <div id="legend-desa-minmax" style="
             display:flex;
             justify-content:space-between;
             font-size:10px;
@@ -2988,6 +3015,10 @@ def generate_map():
             <span id="legend-desa-min">0% <br><i>(belum ada yang teredukasi)</i></span>
             <span id="legend-desa-max" style="text-align:right;">100% <br><i>(semua warga prioritas teredukasi)</i></span>
         </div>
+
+        <!-- Legenda kategori (Rendah/Sedang/Tinggi) khusus tab Kajian Risiko Bencana;
+             isinya diisi JS (kajianAturLegenda) -->
+        <div id="legend-desa-kajian" style="display:none;"></div>
 
         <div id="legend-desa-status-note" style="
             display:none;
@@ -3005,6 +3036,12 @@ def generate_map():
 
     """
 
+
+    # Opsi dropdown "Jenis Bencana" (tab Kajian Risiko Bencana)
+    overlay_html = overlay_html.replace(
+        '__KAJIAN_OPSI_HTML__',
+        kajian_risiko.opsi_dropdown_html()
+    )
 
     m.get_root().html.add_child(
         folium.Element(
@@ -3076,17 +3113,17 @@ def generate_map():
         let destanaScoreKec = __DESTANA_SCORE_KEC_JSON__;
         let destanaStatusKec = __DESTANA_STATUS_KEC_JSON__;
         let destanaThreshold = __DESTANA_THRESHOLD__;
-        let colorMapPotensiBencanaDesa = __COLOR_MAP_PB_DESA_JSON__;
-        let colorMapPotensiBencanaKec = __COLOR_MAP_PB_KEC_JSON__;
 
-        // Tooltip per mode/tab (realisasi, prioritas, destana,
-        // potensi_bencana), key-nya sama dengan colorMapDesa/Kec di
-        // atas. Dipakai applyColorMode() supaya isi tooltip ikut
+        // Tooltip per mode/tab (realisasi, prioritas, destana;
+        // tab kajian_risiko dibangun terpisah oleh kajian_risiko_map.js),
+        // key-nya sama dengan colorMapDesa/Kec di atas. Dipakai applyColorMode() supaya isi tooltip ikut
         // berganti sesuai tab yang aktif -- bukan cuma warnanya saja.
         let tooltipMapDesa = __TOOLTIP_MAP_DESA_JSON__;
         let tooltipMapKec = __TOOLTIP_MAP_KEC_JSON__;
 
         let currentColorMode = 'realisasi';
+
+        __KAJIAN_RISIKO_JS__
  
  
         let initialCenter = [
@@ -3245,6 +3282,28 @@ def generate_map():
                 // "layer" (wrapper) ATAU "featureLayer" (anak),
                 // tergantung versi folium -- jadi cek keduanya supaya
                 // aman di kedua kondisi.
+                // Tooltip awal (sebelum ditimpa mode kajian) disimpan supaya desa
+                // yang TIDAK punya entri tooltip di mode lain (mis. desa yang
+                // tidak ada di data edukasi) bisa dikembalikan.
+                // Tooltip bisa menempel di pembungkus (layer) ATAU di
+                // poligon anaknya (featureLayer), jadi disimpan/dipulihkan
+                // per objek yang benar-benar memegang tooltip.
+                function simpanTooltipAwal() {
+                    [layer, featureLayer].forEach(function (o) {
+                        if (o._tipAsli === undefined && o.getTooltip && o.getTooltip()) {
+                            o._tipAsli = o.getTooltip().getContent();
+                        }
+                    });
+                }
+
+                function pulihkanTooltipAwal() {
+                    [layer, featureLayer].forEach(function (o) {
+                        if (o._tipAsli !== undefined && o.getTooltip && o.getTooltip() && o.setTooltipContent) {
+                            o.setTooltipContent(o._tipAsli);
+                        }
+                    });
+                }
+
                 function updateTooltipTo(newHtml) {
                     if (layer.getTooltip && layer.getTooltip() && layer.setTooltipContent) {
                         layer.setTooltipContent(newHtml);
@@ -3270,17 +3329,26 @@ def generate_map():
                     let key = cleanNameJS(namaKec);
 
                     if (featureLayer.setStyle) {
+                        let warna = null;
                         if (mode === 'destana') {
-                            if (colorMapDestanaKec[key]) featureLayer.setStyle({ fillColor: colorMapDestanaKec[key] });
-                        } else if (mode === 'potensi_bencana') {
-                            if (colorMapPotensiBencanaKec[key]) featureLayer.setStyle({ fillColor: colorMapPotensiBencanaKec[key] });
+                            warna = colorMapDestanaKec[key] || null;
+                        } else if (mode === 'kajian_risiko') {
+                            if (featureLayer._fillAsli === undefined) featureLayer._fillAsli = featureLayer.options.fillColor;
+                            warna = kajianFillColor('kec', key);
                         } else if (colorMapKec[key]) {
-                            featureLayer.setStyle({ fillColor: colorMapKec[key][mode] });
+                            warna = colorMapKec[key][mode];
                         }
+                        if (warna) featureLayer.setStyle({ fillColor: warna });
+                        else if (featureLayer._fillAsli !== undefined) featureLayer.setStyle({ fillColor: featureLayer._fillAsli });
                     }
 
-                    if (tooltipMapKec[key] && tooltipMapKec[key][mode]) {
+                    if (mode === 'kajian_risiko') {
+                        simpanTooltipAwal();
+                        updateTooltipTo(kajianTooltipHtml('kec', key));
+                    } else if (tooltipMapKec[key] && tooltipMapKec[key][mode]) {
                         updateTooltipTo(tooltipMapKec[key][mode]);
+                    } else {
+                        pulihkanTooltipAwal();
                     }
 
                 }
@@ -3300,17 +3368,29 @@ def generate_map():
                     let key = cleanNameJS(namaDesa);
 
                     if (featureLayer.setStyle) {
+                        // Warna awal disimpan sebelum tab Kajian menimpanya, supaya
+                        // desa yang TIDAK punya warna di tab lain (mis. tidak ada
+                        // di data edukasi, abu-abu #cccccc) bisa dikembalikan.
+                        let warna = null;
                         if (mode === 'destana') {
-                            if (colorMapDestanaDesa[key]) featureLayer.setStyle({ fillColor: colorMapDestanaDesa[key] });
-                        } else if (mode === 'potensi_bencana') {
-                            if (colorMapPotensiBencanaDesa[key]) featureLayer.setStyle({ fillColor: colorMapPotensiBencanaDesa[key] });
+                            warna = colorMapDestanaDesa[key] || null;
+                        } else if (mode === 'kajian_risiko') {
+                            if (featureLayer._fillAsli === undefined) featureLayer._fillAsli = featureLayer.options.fillColor;
+                            warna = kajianFillColor('desa', kajianKeyDesa(properties));
                         } else if (colorMapDesa[key]) {
-                            featureLayer.setStyle({ fillColor: colorMapDesa[key][mode] });
+                            warna = colorMapDesa[key][mode];
                         }
+                        if (warna) featureLayer.setStyle({ fillColor: warna });
+                        else if (featureLayer._fillAsli !== undefined) featureLayer.setStyle({ fillColor: featureLayer._fillAsli });
                     }
 
-                    if (tooltipMapDesa[key] && tooltipMapDesa[key][mode]) {
+                    if (mode === 'kajian_risiko') {
+                        simpanTooltipAwal();
+                        updateTooltipTo(kajianTooltipHtml('desa', kajianKeyDesa(properties)));
+                    } else if (tooltipMapDesa[key] && tooltipMapDesa[key][mode]) {
                         updateTooltipTo(tooltipMapDesa[key][mode]);
+                    } else {
+                        pulihkanTooltipAwal();
                     }
 
                 }
@@ -3332,11 +3412,13 @@ def generate_map():
                 subjudul = 'Rata-rata persentase indikator Destana yang terpenuhi';
                 labelMin = '0% <br><i>(kesiapsiagaan rendah)</i>';
                 labelMax = '100% <br><i>(seluruh indikator terpenuhi)</i>';
-            } else if (mode === 'potensi_bencana') {
-                judul = 'Skor Potensi Bencana';
-                subjudul = 'Ancaman (jenis bencana yang dicentang admin) &times; Kerentanan &divide; Kapasitas Destana. Abu-abu = belum diisi admin.';
-                labelMin = '0 <br><i>(potensi rendah)</i>';
-                labelMax = '100 <br><i>(potensi tinggi)</i>';
+            } else if (mode === 'kajian_risiko') {
+                // Judul & isi legenda kategori diatur kajian_risiko_map.js
+                let kj = kajianJudulLegenda();
+                judul = kj.judul;
+                subjudul = kj.subjudul;
+                labelMin = '';
+                labelMax = '';
             } else if (mode === 'prioritas') {
                 judul = 'Prioritas Edukasi Tersisa';
                 subjudul = 'Jumlah Warga Prioritas yang Belum Diedukasi (Wajib Edukasi - Sudah Diedukasi)';
@@ -3431,6 +3513,10 @@ def generate_map():
 
             }
 
+            // Legenda kategori Rendah/Sedang/Tinggi (khusus tab Kajian
+            // Risiko) menggantikan gradasi + label min/max bawaan.
+            kajianAturLegenda(mode);
+
         }
 
 
@@ -3440,9 +3526,10 @@ def generate_map():
                 realisasi: document.getElementById('btn-mode-realisasi'),
                 prioritas: document.getElementById('btn-mode-prioritas'),
                 destana: document.getElementById('btn-mode-destana'),
-                potensi_bencana: document.getElementById('btn-mode-potensi-bencana')
+                kajian_risiko: document.getElementById('btn-mode-kajian-risiko')
             };
-            if (!buttons.realisasi || !buttons.prioritas || !buttons.destana || !buttons.potensi_bencana) return;
+            kajianAturDropdown(mode);
+            if (!buttons.realisasi || !buttons.prioritas || !buttons.destana || !buttons.kajian_risiko) return;
             Object.keys(buttons).forEach(function(key) {
                 buttons[key].style.background = key === mode ? '#00ffcc' : '#0f172a';
                 buttons[key].style.color = key === mode ? '#0f172a' : '#00ffcc';
@@ -3656,6 +3743,13 @@ def generate_map():
             cleanKecName,
             bounds
         ) {
+
+            // Legenda kajian risiko menghitung desa di kecamatan yang
+            // sedang dibuka saja.
+            kajianKecTerbuka = cleanKecName;
+            if (currentColorMode === 'kajian_risiko') {
+                kajianAturLegenda(currentColorMode);
+            }
  
             document
                 .querySelectorAll(
@@ -3797,6 +3891,11 @@ def generate_map():
  
  
         function resetToKecamatanView() {
+
+            kajianKecTerbuka = null;
+            if (currentColorMode === 'kajian_risiko') {
+                kajianAturLegenda(currentColorMode);
+            }
  
             document
                 .querySelectorAll(
@@ -3872,6 +3971,14 @@ def generate_map():
  
     """
 
+    # Sisipkan blok JS tab Kajian Risiko Bencana, lalu isi placeholder
+    # datanya (JSON dari tabulasi -- lihat kajian_risiko.data_js()).
+    interactive_script = interactive_script.replace(
+        '__KAJIAN_RISIKO_JS__', _js_kajian_risiko()
+    )
+    for _ph, _val in kajian_risiko.data_js(kajian_data_peta).items():
+        interactive_script = interactive_script.replace(_ph, _val)
+
     interactive_script = (
         interactive_script
         .replace('__COLOR_MAP_DESA_JSON__', json.dumps(color_map_desa))
@@ -3882,8 +3989,6 @@ def generate_map():
         .replace('__DESTANA_SCORE_KEC_JSON__', json.dumps(destana_score_kec))
         .replace('__DESTANA_STATUS_KEC_JSON__', json.dumps(destana_status_kec))
         .replace('__DESTANA_THRESHOLD__', str(threshold_now))
-        .replace('__COLOR_MAP_PB_DESA_JSON__', json.dumps(color_map_pb_desa))
-        .replace('__COLOR_MAP_PB_KEC_JSON__', json.dumps(color_map_pb_kec))
         .replace('__TOOLTIP_MAP_DESA_JSON__', json.dumps(tooltip_map_desa))
         .replace('__TOOLTIP_MAP_KEC_JSON__', json.dumps(tooltip_map_kec))
     )
