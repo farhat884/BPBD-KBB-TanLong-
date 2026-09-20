@@ -1,11 +1,14 @@
-
 import os
 import re
 import hashlib
 from datetime import datetime, timezone
 
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from functools import lru_cache
+
+# scikit-learn (+scipy) butuh ~1 detik untuk di-import. Hanya retrieve() yang
+# memakainya, jadi di-import di dalam fungsi itu -- bukan di sini -- supaya
+# halaman yang cuma memanggil list_documents() (Dashboard Admin) tidak ikut
+# menanggung biayanya.
 
 ALLOWED_EXTENSIONS = {"pdf", "docx", "txt", "md"}
 MAX_PROCESS_BYTES = 50 * 1024 * 1024
@@ -13,7 +16,10 @@ CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 180
 
 
+@lru_cache(maxsize=1)
 def _get_supabase():
+    # Client dipakai ulang antar-request (lru_cache tidak menyimpan exception,
+    # jadi kalau env belum diisi, error tetap dilempar seperti biasa).
     from supabase import create_client
     url = os.getenv("SUPABASE_URL", "").strip()
     key = os.getenv("SUPABASE_SECRET_KEY", "").strip()
@@ -247,6 +253,8 @@ def retrieve(query, top_k=6, min_score=0.10):
         return []
 
     try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity
         vectorizer = TfidfVectorizer(
             lowercase=True,
             ngram_range=(1, 2),

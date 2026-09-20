@@ -57,6 +57,7 @@ import os
 import json
 import re
 import base64
+from functools import lru_cache
 
 STATIC_DIR_REL = os.path.join("static", "id3217_bandung_barat")
 KECAMATAN_GEOJSON = "32.17_kecamatan.geojson"
@@ -78,20 +79,26 @@ def daftar_kecamatan(app_root_path):
     """
     Return list [{"nama": "Lembang", "clean": "lembang"}, ...] terurut
     abjad, dibaca dari file geojson batas kecamatan KBB.
+    (Hasil di-cache: file geojson ~680 KB tidak perlu di-parse ulang tiap request.)
     """
+    return [dict(x) for x in _daftar_kecamatan_cached(app_root_path)]
+
+
+@lru_cache(maxsize=4)
+def _daftar_kecamatan_cached(app_root_path):
     from ml_engine import clean_name  # import lokal, hindari circular import
 
     path = os.path.join(_static_dir(app_root_path), KECAMATAN_GEOJSON)
     hasil = []
 
     if not os.path.exists(path):
-        return hasil
+        return ()
 
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception:
-        return hasil
+        return ()
 
     for feature in data.get("features", []):
         nama = str(feature.get("properties", {}).get("nm_kecamatan", "")).strip()
@@ -100,7 +107,7 @@ def daftar_kecamatan(app_root_path):
         hasil.append({"nama": nama, "clean": clean_name(nama)})
 
     hasil.sort(key=lambda x: x["nama"])
-    return hasil
+    return tuple(hasil)
 
 
 def _peta_file_desa(app_root_path):

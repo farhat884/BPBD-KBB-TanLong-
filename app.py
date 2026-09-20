@@ -1848,7 +1848,7 @@ def generate_map():
 
     # Skor Destana desa = persentase indikator aktif yang terpenuhi.
     # Skor Destana kecamatan = rata-rata skor seluruh desa di kecamatan.
-    destana_indicators = get_destana_indicators()
+    destana_indicators, threshold_now, destana_checklists = load_destana_snapshot()
     destana_score_desa = {}
     destana_status_desa = {}
     destana_missing_desa = {}
@@ -1857,7 +1857,10 @@ def generate_map():
     destana_counts_by_kec = {}
 
     for key_d, d in desa_dict.items():
-        rec = get_destana_record(d.get('Kecamatan', ''), d.get('Desa', ''), destana_indicators)
+        rec = get_destana_record(
+            d.get('Kecamatan', ''), d.get('Desa', ''), destana_indicators,
+            destana_checklists, threshold_now,
+        )
         score = round(float(rec.get('persen', 0)), 2)
         destana_score_desa[key_d] = score
         destana_status_desa[key_d] = rec.get('status', 'Belum memenuhi')
@@ -1890,7 +1893,6 @@ def generate_map():
 
     destana_score_kec = {}
     destana_status_kec = {}
-    threshold_now = get_destana_threshold()
     for key_k in kec_dict:
         scores = destana_scores_by_kec.get(key_k, [])
         avg = sum(scores) / len(scores) if scores else 0
@@ -4278,9 +4280,50 @@ def get_destana_threshold():
         return DEFAULT_DESTANA_THRESHOLD
 
 
-def get_destana_record(kecamatan, desa, indicators):
+def load_destana_snapshot():
+    """
+    Baca node 'destana' SEKALI (indikator + setting threshold + checklist
+    semua desa) -> return (indicators, threshold, checklists).
+
+    Dulu get_destana_record() memanggil Firebase 2x PER DESA (checklist +
+    threshold) sehingga membuka /destana atau Dashboard Admin = ~290
+    round-trip Firebase berurutan. Dengan snapshot ini cukup 1 round-trip.
+    """
+    data = db.reference('destana').get()
+    if not isinstance(data, dict):
+        data = {}
+
+    indicators = data.get('indicators')
+    if not isinstance(indicators, dict) or not indicators:
+        # Belum ada indikator -> pakai fungsi lama yang sekaligus menyemai
+        # indikator bawaan (hanya terjadi sekali di database kosong).
+        indicators = get_destana_indicators()
+
+    settings = data.get('settings')
+    raw_threshold = settings.get('threshold') if isinstance(settings, dict) else None
+    try:
+        threshold = max(1, min(100, float(raw_threshold)))
+    except (TypeError, ValueError):
+        threshold = DEFAULT_DESTANA_THRESHOLD
+
+    checklists = data.get('checklists')
+    if not isinstance(checklists, dict):
+        checklists = {}
+
+    return indicators, threshold, checklists
+
+
+def get_destana_record(kecamatan, desa, indicators, checklists=None, threshold=None):
+    """
+    Hitung status Destana satu desa. Kalau `checklists` & `threshold` diberikan
+    (hasil load_destana_snapshot) TIDAK ada panggilan jaringan; kalau tidak,
+    perilaku lama (baca Firebase per desa) dipakai -- untuk pemanggilan tunggal.
+    """
     key = destana_key(kecamatan, desa)
-    record = db.reference(f'destana/checklists/{key}').get()
+    if checklists is not None:
+        record = checklists.get(key)
+    else:
+        record = db.reference(f'destana/checklists/{key}').get()
     if not isinstance(record, dict):
         record = {}
     checked = record.get('checked', {})
@@ -4290,7 +4333,8 @@ def get_destana_record(kecamatan, desa, indicators):
     total = len(active)
     terpenuhi = sum(1 for k in active if bool(checked.get(k)))
     persen = (terpenuhi / total * 100) if total else 0
-    threshold = get_destana_threshold()
+    if threshold is None:
+        threshold = get_destana_threshold()
     return {
         'key': key,
         'checked': checked,
@@ -4302,7 +4346,7 @@ def get_destana_record(kecamatan, desa, indicators):
     }
 
 
-def hitung_potensi_bencana_semua_desa():
+def hitung_potensi_bencana_semua_desa(snapshot=None, daftar_jenis_ancaman=None):
     """
     Hitung skor Potensi Bencana (Ancaman x Kerentanan / Kapasitas)
     untuk SEMUA desa di desa_dict, sekaligus rata-ratanya & gabungan
@@ -4324,8 +4368,11 @@ def hitung_potensi_bencana_semua_desa():
         daftar_jenis_ancaman : list dict jenis bencana yang tersedia
                               saat ini (bawaan + custom admin)
     """
-    indikator = get_destana_indicators()
-    daftar_jenis_ancaman = get_daftar_jenis_ancaman()
+    if snapshot is None:
+        snapshot = load_destana_snapshot()
+    indikator, threshold_destana, checklists_destana = snapshot
+    if daftar_jenis_ancaman is None:
+        daftar_jenis_ancaman = get_daftar_jenis_ancaman()
     total_jenis = len(daftar_jenis_ancaman)
     detail_by_id = {j['id']: j for j in daftar_jenis_ancaman}
 
@@ -4343,7 +4390,10 @@ def hitung_potensi_bencana_semua_desa():
         key_k = clean_name(d.get('Kecamatan', ''))
         jumlah_desa_per_kec[key_k] = jumlah_desa_per_kec.get(key_k, 0) + 1
 
-        rec = get_destana_record(d.get('Kecamatan', ''), d.get('Desa', ''), indikator)
+        rec = get_destana_record(
+            d.get('Kecamatan', ''), d.get('Desa', ''), indikator,
+            checklists_destana, threshold_destana,
+        )
         kapasitas = rec.get('persen', 0)
 
         jenis_terpilih = d.get('Ancaman_Jenis_Desa')  # None = belum pernah diisi admin
@@ -4491,8 +4541,7 @@ def logout():
 @app.route("/destana")
 @login_required
 def destana():
-    indicators = get_destana_indicators()
-    threshold = get_destana_threshold()
+    indicators, threshold, checklists = load_destana_snapshot()
 
     daftar = []
     for key, data in desa_dict.items():
@@ -4502,7 +4551,7 @@ def destana():
         desa = data.get('Desa', '')
         if not desa:
             continue
-        item = get_destana_record(kec, desa, indicators)
+        item = get_destana_record(kec, desa, indicators, checklists, threshold)
         item.update({'kecamatan': kec, 'desa': desa})
         daftar.append(item)
 
@@ -4828,13 +4877,29 @@ def admin_ai_add_text():
 @role_required('admin')
 def dashboard_admin():
 
-    # --- Daftar akun (users) ---
-    ref_users = db.reference('users')
-    users_data = ref_users.get() or {}
+    # Semua bacaan jaringan di bawah saling bebas, jadi dijalankan SERENTAK
+    # (waktu total = yang paling lambat, bukan dijumlahkan satu per satu).
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=5, thread_name_prefix="admin-io") as ex:
+        f_users = ex.submit(lambda: db.reference('users').get())
+        f_laporan = ex.submit(lambda: db.reference('laporan_edukasi').get())
+        f_destana = ex.submit(load_destana_snapshot)
+        f_jenis = ex.submit(get_daftar_jenis_ancaman)
+        f_dokumen = ex.submit(list_documents)
 
-    # --- Daftar laporan edukasi dari semua petugas ---
-    ref_laporan = db.reference('laporan_edukasi')
-    laporan_data = ref_laporan.get() or {}
+        # --- Daftar akun (users) ---
+        users_data = f_users.result() or {}
+
+        # --- Daftar laporan edukasi dari semua petugas ---
+        laporan_data = f_laporan.result() or {}
+        destana_snapshot = f_destana.result()
+        jenis_ancaman = f_jenis.result()
+        try:
+            ai_knowledge_documents = f_dokumen.result()
+        except Exception as exc:
+            print(f"[SUPABASE] list knowledge gagal: {type(exc).__name__}: {exc}")
+            ai_knowledge_documents = []
+
     laporan_list = []
     for laporan_id, info in laporan_data.items():
         if isinstance(info, dict):
@@ -4876,19 +4941,15 @@ def dashboard_admin():
     total_desa_kosong = len(desa_kosong_list)
     total_kec_kosong = len(kec_kosong_list)
 
-    try:
-        ai_knowledge_documents = list_documents()
-    except Exception as exc:
-        print(f"[SUPABASE] list knowledge gagal: {type(exc).__name__}: {exc}")
-        ai_knowledge_documents = []
-
     # --- Daftar kecamatan untuk form "Input Topografi Manual" ---
     topografi_kecamatan_list = topografi_manual.daftar_kecamatan(app.root_path)
 
     # --- Potensi Bencana = Ancaman x Kerentanan / Kapasitas ---
     # (lihat potensi_bencana.py -- data Ancaman diinput manual admin
     # karena data hazard resmi belum tersedia)
-    potensi_bencana_info, potensi_bencana_kec_ringkas, daftar_jenis_ancaman = hitung_potensi_bencana_semua_desa()
+    potensi_bencana_info, potensi_bencana_kec_ringkas, daftar_jenis_ancaman = hitung_potensi_bencana_semua_desa(
+        snapshot=destana_snapshot, daftar_jenis_ancaman=jenis_ancaman
+    )
 
     return render_template(
         "Dashboard_admin.html",
@@ -5354,12 +5415,49 @@ def admin_topografi_simpan():
     return jsonify({"ok": True, "diterapkan": diterapkan})
 
 
+_QUERY_LAPORAN_PETUGAS_OK = True
+
+
+def _ambil_laporan_petugas(email):
+    """
+    Ambil laporan milik SATU petugas. Filter dilakukan di server Firebase
+    (order_by_child + equal_to) sehingga yang diunduh hanya laporan petugas
+    itu -- bukan seluruh node 'laporan_edukasi' yang terus membesar (laporan
+    "seluruh KBB" menambah ~150 baris sekali kirim).
+
+    Butuh aturan indeks di Firebase Realtime Database:
+        "laporan_edukasi": { ".indexOn": ["petugas_email"] }
+    Kalau indeks belum ada, Firebase menolak query -> otomatis kembali ke cara
+    lama (unduh semua lalu filter di Python) dan tidak dicoba lagi sampai
+    server restart, supaya tidak menambah 1 request gagal di tiap halaman.
+    """
+    global _QUERY_LAPORAN_PETUGAS_OK
+    if _QUERY_LAPORAN_PETUGAS_OK and email:
+        try:
+            return (
+                db.reference('laporan_edukasi')
+                .order_by_child('petugas_email')
+                .equal_to(email)
+                .get()
+            ) or {}
+        except Exception as exc:
+            _QUERY_LAPORAN_PETUGAS_OK = False
+            print(
+                "⚠️  Query laporan per petugas gagal (kemungkinan .indexOn "
+                f"'petugas_email' belum ada di Firebase Rules): {exc}"
+            )
+    semua = db.reference('laporan_edukasi').get() or {}
+    return {
+        k: v for k, v in semua.items()
+        if isinstance(v, dict) and v.get('petugas_email') == email
+    }
+
+
 @app.route("/dashboard-petugas")
 @role_required('petugas', 'admin')
 def dashboard_petugas():
 
-    ref_laporan = db.reference('laporan_edukasi')
-    laporan_data = ref_laporan.get() or {}
+    laporan_data = _ambil_laporan_petugas(session.get('email'))
     laporan_list = []
     for laporan_id, info in laporan_data.items():
         if isinstance(info, dict) and info.get('petugas_email') == session.get('email'):
