@@ -182,66 +182,6 @@ def kategori_risiko_gabungan(skor_gabungan):
         return 'Rendah'
 
 
-def terapkan_topografi_manual(target_dict, key, breakdown, level="kecamatan"):
-    """
-    Menerapkan hasil klasifikasi topografi manual (upload gambar + AI
-    vision, lihat topografi_manual.py) ke SATU entri di kec_dict atau
-    desa_dict, lalu menghitung ulang Skor_Risiko_Gabungan_Kec &
-    Kategori_Risiko_Gabungan_Kec HANYA untuk entri itu.
-
-    Sengaja per-entri (bukan disebar rata ke satu kecamatan/desa),
-    supaya topografi TIDAK diasumsikan seragam dalam satu wilayah
-    administratif -- ini yang jadi keluhan utama soal pendekatan lama
-    (1 kecamatan = 1 elevasi rata-rata).
-
-    Parameter
-    ---------
-    target_dict : dict
-        kec_dict ATAU desa_dict (dict {key: data_wilayah}).
-    key : str
-        Key wilayah di target_dict (kecamatan_clean, atau desa_key
-        berformat "{kecamatan_clean}__{desa_clean}").
-    breakdown : dict
-        {"persen_rendah": .., "persen_sedang": .., "persen_tinggi": ..}
-    level : str
-        "kecamatan" | "desa" -- hanya penanda sumber untuk ditampilkan
-        di panel admin, tidak memengaruhi rumus skor.
-
-    Return True kalau `key` ditemukan & berhasil diterapkan.
-    """
-    from topografi_manual import kategori_dominan_dari_breakdown, skor_dari_breakdown
-
-    if key not in target_dict:
-        return False
-
-    data = target_dict[key]
-
-    pr = breakdown.get('persen_rendah', 0)
-    ps = breakdown.get('persen_sedang', 0)
-    pt = breakdown.get('persen_tinggi', 0)
-
-    kategori_dominan = kategori_dominan_dari_breakdown(pr, ps, pt)
-    bobot_topo = skor_dari_breakdown(pr, ps, pt)
-
-    data['Elevasi_M_Kec'] = None
-    data['Kategori_Topografi_Kec'] = f"{kategori_dominan} (Input Manual)"
-    data['Topografi_Breakdown_Kec'] = {
-        'persen_rendah': pr,
-        'persen_sedang': ps,
-        'persen_tinggi': pt,
-    }
-    data['Topografi_Sumber_Kec'] = 'manual_ai_gambar'
-    data['Topografi_Level_Kec'] = level
-
-    skor_dasar = skor_dasar_dari_kelas_risiko(data.get('Kelas_Risiko_Kec', ''))
-    data['Skor_Risiko_Gabungan_Kec'] = round(skor_dasar + bobot_topo, 2)
-    data['Kategori_Risiko_Gabungan_Kec'] = kategori_risiko_gabungan(
-        data['Skor_Risiko_Gabungan_Kec']
-    )
-
-    return True
-
-
 def update_desa_excel(app_root_path, desa_name, kecamatan_name,
                        jumlah_penduduk, umur_rentan, miskin, disabilitas):
     """

@@ -30,9 +30,7 @@ delete_document = _rag_malas("delete_document")
 
 import folium
 
-from ml_engine import get_ml_clustered_data, clean_name, kategori_rentan, update_desa_excel, terapkan_topografi_manual, bagikan_kuota_sisa_terbesar
-import topografi_manual
-import potensi_bencana
+from ml_engine import get_ml_clustered_data, clean_name, kategori_rentan, update_desa_excel, bagikan_kuota_sisa_terbesar
 import kajian_risiko
 import json
 import os
@@ -106,17 +104,6 @@ if not _groq_api_key:
     )
 groq_client = Groq(api_key=_groq_api_key) if _groq_api_key else None
 
-# ========================================================
-# INPUT TOPOGRAFI MANUAL VIA GAMBAR (lihat topografi_manual.py)
-# ========================================================
-# Model vision yang dipakai buat "membaca" gambar peta topografi.
-# CATATAN: daftar model vision Groq bisa berubah dari waktu ke waktu.
-# Kalau model default di bawah sudah tidak tersedia, cek model vision
-# terbaru di https://console.groq.com/docs/vision lalu override lewat
-# environment variable GROQ_VISION_MODEL (tidak perlu ubah kode).
-GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
-MAX_TOPO_IMAGE_BYTES = 8 * 1024 * 1024  # 8 MB -- cukup buat screenshot/foto peta
-ALLOWED_TOPO_IMAGE_EXT = {"png", "jpg", "jpeg", "webp"}
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 GROQ_FALLBACK_MODEL = os.getenv("GROQ_FALLBACK_MODEL", "llama-3.1-8b-instant")
 GROQ_SAFE_FALLBACKS = [
@@ -179,9 +166,9 @@ print("Berhasil terhubung ke Firebase!")
 # ========================================================
 # PREFETCH FIREBASE PARALEL SAAT START
 # ========================================================
-# Saat start, aplikasi membaca 6 node Firebase yang saling bebas. Dulu
-# dibaca satu per satu (6 kali tunggu jaringan berurutan) SESUDAH semua
-# pekerjaan lokal selesai. Sekarang keenamnya diminta serentak di thread
+# Saat start, aplikasi membaca 3 node Firebase yang saling bebas. Dulu
+# dibaca satu per satu (kali tunggu jaringan berurutan) SESUDAH semua
+# pekerjaan lokal selesai. Sekarang semuanya diminta serentak di thread
 # latar SEKARANG JUGA, jadi menunggu jaringannya tumpang-tindih dengan
 # pekerjaan lokal (baca Excel, klasterisasi, dst) dan satu sama lain.
 #
@@ -193,10 +180,7 @@ print("Berhasil terhubung ke Firebase!")
 # seperti sebelumnya.
 _FB_PREFETCH_PATHS = (
     'desa_overrides',
-    'topografi_manual_kec',
-    'topografi_manual_desa',
-    'daftar_jenis_ancaman_custom',
-    'potensi_bencana_ancaman_desa',
+    'kajian_risiko',
     'laporan_edukasi',
 )
 _FB_PREFETCH_MAX_UMUR = 30  # detik
@@ -746,168 +730,6 @@ def sync_desa_overrides():
 sync_desa_overrides()
 
 
-def sync_topografi_manual():
-    """
-    Terapkan semua hasil "Input Topografi Manual via Gambar" yang
-    tersimpan di Firebase ('topografi_manual_kec' & 'topografi_manual_desa')
-    ke kec_dict & desa_dict saat server start -- pola yang sama seperti
-    sync_desa_overrides().
-
-    Urutan penerapan: KECAMATAN dulu (jadi dasar untuk semua desa di
-    kecamatan itu yang belum punya input manual sendiri), baru DESA
-    (supaya input per-desa yang lebih spesifik menang atas nilai
-    kecamatan induknya).
-    """
-    try:
-        data_kec = _fb_get('topografi_manual_kec') or {}
-    except Exception as e:
-        print(f"⚠️  Gagal sinkronisasi topografi manual (kecamatan): {e}")
-        data_kec = {}
-
-    try:
-        data_desa = _fb_get('topografi_manual_desa') or {}
-    except Exception as e:
-        print(f"⚠️  Gagal sinkronisasi topografi manual (desa): {e}")
-        data_desa = {}
-
-    diterapkan = 0
-
-    for kec_clean, ov in data_kec.items():
-        if not isinstance(ov, dict):
-            continue
-        breakdown = {
-            'persen_rendah': safe_number(ov.get('persen_rendah', 0)),
-            'persen_sedang': safe_number(ov.get('persen_sedang', 0)),
-            'persen_tinggi': safe_number(ov.get('persen_tinggi', 0)),
-        }
-        if terapkan_topografi_manual(kec_dict, kec_clean, breakdown, 'kecamatan'):
-            diterapkan += 1
-            # Sebar ke semua desa di kecamatan ini yang BELUM punya
-            # input manual per-desa sendiri.
-            for dk, dv in desa_dict.items():
-                if (
-                    clean_name(dv.get('Kecamatan', '')) == kec_clean
-                    and dv.get('Topografi_Sumber_Kec') != 'manual_ai_gambar'
-                ):
-                    terapkan_topografi_manual(desa_dict, dk, breakdown, 'kecamatan')
-
-    for desa_key, ov in data_desa.items():
-        if not isinstance(ov, dict):
-            continue
-        breakdown = {
-            'persen_rendah': safe_number(ov.get('persen_rendah', 0)),
-            'persen_sedang': safe_number(ov.get('persen_sedang', 0)),
-            'persen_tinggi': safe_number(ov.get('persen_tinggi', 0)),
-        }
-
-        lookup_key = desa_key
-        if lookup_key not in desa_dict:
-            kecamatan_clean_induk = str(ov.get('kecamatan_clean', ''))
-            desa_clean_target = desa_key.split('__')[-1]
-            cocok = [
-                k for k, v in desa_dict.items()
-                if clean_name(v.get('Kecamatan', '')) == kecamatan_clean_induk
-                and clean_name(v.get('Desa', '')) == desa_clean_target
-            ]
-            lookup_key = cocok[0] if cocok else None
-
-        if lookup_key and terapkan_topografi_manual(desa_dict, lookup_key, breakdown, 'desa'):
-            diterapkan += 1
-
-    print(
-        f"✅ Topografi manual (input gambar) tersinkron dari Firebase "
-        f"({diterapkan} entri diterapkan)."
-    )
-
-
-sync_topografi_manual()
-
-
-def get_daftar_jenis_ancaman():
-    """
-    Ambil daftar JENIS BENCANA yang tersedia di checklist "Ancaman"
-    (Potensi Bencana): gabungan jenis bawaan sistem
-    (potensi_bencana.DEFAULT_JENIS_ANCAMAN) + jenis custom yang
-    ditambahkan admin lewat Firebase node
-    'daftar_jenis_ancaman_custom'.
-
-    Return: list[dict] -- tiap item {'id', 'label', 'icon', 'custom'}
-    """
-    try:
-        data = _fb_get('daftar_jenis_ancaman_custom') or {}
-    except Exception as e:
-        print(f"⚠️  Gagal ambil daftar jenis ancaman custom dari Firebase: {e}")
-        data = {}
-
-    daftar = list(potensi_bencana.DEFAULT_JENIS_ANCAMAN)
-    id_sudah_ada = {j['id'] for j in daftar}
-
-    for jenis_id, info in data.items():
-        if not isinstance(info, dict) or not str(info.get('label', '')).strip():
-            continue
-        if jenis_id in id_sudah_ada:
-            continue
-        daftar.append({
-            'id': jenis_id,
-            'label': str(info.get('label')).strip(),
-            'icon': info.get('icon') or potensi_bencana.ICON_JENIS_ANCAMAN_CUSTOM,
-            'custom': True,
-        })
-        id_sudah_ada.add(jenis_id)
-
-    return daftar
-
-
-def sync_potensi_bencana_ancaman():
-    """
-    Baca daftar JENIS BENCANA yang pernah dicentang admin per desa
-    dari Firebase node 'potensi_bencana_ancaman_desa', lalu terapkan
-    ke desa_dict. Lihat potensi_bencana.py untuk penjelasan lengkap
-    kenapa data Ancaman diisi manual (data hazard resmi belum ada).
-
-    Pola sinkronisasi ini sama seperti sync_desa_overrides() &
-    sync_topografi_manual() -- dipanggil sekali saat server start
-    karena hosting serverless (Vercel) tidak bisa menyimpan state di
-    memori antar-request/deploy.
-    """
-    try:
-        data = _fb_get('potensi_bencana_ancaman_desa') or {}
-    except Exception as e:
-        print(f"⚠️  Gagal sinkronisasi data Ancaman (Potensi Bencana) dari Firebase: {e}")
-        data = {}
-
-    id_jenis_valid = {j['id'] for j in get_daftar_jenis_ancaman()}
-
-    diterapkan = 0
-
-    for desa_key, ov in data.items():
-        if not isinstance(ov, dict) or desa_key not in desa_dict:
-            continue
-
-        jenis_terpilih_raw = ov.get('jenis_terpilih')
-        if not isinstance(jenis_terpilih_raw, list):
-            # Format data lama (skor_ancaman 1/2/3) atau belum pernah
-            # diisi format baru -- anggap belum diisi, jangan ditebak.
-            continue
-
-        jenis_terpilih = [j for j in jenis_terpilih_raw if j in id_jenis_valid]
-
-        d = desa_dict[desa_key]
-        d['Ancaman_Jenis_Desa'] = jenis_terpilih
-        d['Ancaman_Catatan_Desa'] = str(ov.get('catatan', '') or '')
-        d['Ancaman_Updated_At_Desa'] = ov.get('updated_at', '-')
-        d['Ancaman_Updated_By_Desa'] = ov.get('updated_by', '-')
-        diterapkan += 1
-
-    print(
-        f"✅ Data Ancaman (Potensi Bencana) tersinkron dari Firebase "
-        f"({diterapkan} dari {len(data)} entri diterapkan)."
-    )
-
-
-sync_potensi_bencana_ancaman()
-
-
 # ========================================================
 # KAJIAN RISIKO BENCANA (tabulasi BPBD, lihat kajian_risiko.py)
 # ========================================================
@@ -916,6 +738,63 @@ sync_potensi_bencana_ancaman()
 # strukturnya berubah, MATRIKS_KAJIAN = None dan tab peta menampilkan
 # info "data belum tersedia" -- aplikasi lain tetap jalan normal.
 MATRIKS_KAJIAN = kajian_risiko.muat_matriks_default(app.root_path)
+
+# Data yang diunggah / diisi manual admin disimpan di Firebase (node
+# 'kajian_risiko'), karena folder deploy Vercel read-only. Kalau node itu
+# ada, ia MENGGANTIKAN file bawaan di atas; kalau belum pernah ada, file
+# bawaan tetap dipakai.
+_KAJIAN_VERSI = None           # 'version' data Firebase yang sedang dipakai instance ini
+_KAJIAN_DI_FIREBASE = False    # True kalau data aktif sudah tersimpan di Firebase
+_KAJIAN_LOCK = threading.Lock()
+
+
+def _pasang_matriks_kajian(m, dari_firebase):
+    global MATRIKS_KAJIAN, _KAJIAN_VERSI, _KAJIAN_DI_FIREBASE
+    MATRIKS_KAJIAN = m
+    _KAJIAN_DI_FIREBASE = dari_firebase
+    _KAJIAN_VERSI = (m.get('meta') or {}).get('version') if dari_firebase else None
+
+
+def sync_kajian_risiko():
+    """Dipanggil sekali saat server start (pola sama seperti sync_desa_overrides)."""
+    try:
+        data = _fb_get('kajian_risiko')
+    except Exception as e:
+        print(f"⚠️  Gagal membaca Kajian Risiko dari Firebase, memakai data bawaan: {e}")
+        return
+
+    m = kajian_risiko.matriks_dari_dict(data)
+    if m is None:
+        print("ℹ️  Kajian Risiko: belum ada unggahan admin, memakai file bawaan.")
+        return
+
+    _pasang_matriks_kajian(m, True)
+    print(
+        f"✅ Kajian Risiko dimuat dari Firebase [{m['file']}] "
+        f"({len(m['desa'])} desa, {len(m['kec'])} kecamatan)."
+    )
+
+
+def refresh_kajian_jika_berubah():
+    """
+    Dipanggil setiap peta dibangun ulang (paling sering tiap MAP_CACHE_TTL).
+    Kalau admin menyimpan data baru lewat instance server LAIN, versinya di
+    Firebase berubah -> data diambil ulang di sini. Biayanya 1 baca kecil
+    (hanya angka versi) selama tidak ada perubahan.
+    """
+    try:
+        versi = db.reference('kajian_risiko/meta/version').get()
+        if versi is None or versi == _KAJIAN_VERSI:
+            return
+        m = kajian_risiko.matriks_dari_dict(db.reference('kajian_risiko').get())
+        if m is not None:
+            with _KAJIAN_LOCK:
+                _pasang_matriks_kajian(m, True)
+    except Exception as e:  # noqa: BLE001 - peta tetap dibuat dgn data yg ada
+        print(f"⚠️  Gagal menyegarkan Kajian Risiko dari Firebase: {e}")
+
+
+sync_kajian_risiko()
 
 
 @lru_cache(maxsize=1)
@@ -1069,6 +948,7 @@ def get_cached_map():
 
         # Lock sengaja ditahan saat generate agar dua request bersamaan
         # tidak sama-sama menjalankan Folium yang mahal.
+        refresh_kajian_jika_berubah()
         html = generate_map()
         _MAP_CACHE["html"] = html
         _MAP_CACHE["created_at"] = time.time()
@@ -4346,106 +4226,6 @@ def get_destana_record(kecamatan, desa, indicators, checklists=None, threshold=N
     }
 
 
-def hitung_potensi_bencana_semua_desa(snapshot=None, daftar_jenis_ancaman=None):
-    """
-    Hitung skor Potensi Bencana (Ancaman x Kerentanan / Kapasitas)
-    untuk SEMUA desa di desa_dict, sekaligus rata-ratanya & gabungan
-    jenis ancamannya per kecamatan (hanya dari desa yang checklist
-    Ancaman-nya sudah diisi admin). Lihat potensi_bencana.py untuk
-    detail rumus & alasan kenapa Ancaman diinput manual.
-
-    Return: (info_per_desa, ringkasan_per_kec, daftar_jenis_ancaman)
-        info_per_desa    : {desa_key: hasil_dict dari
-                             potensi_bencana.hitung_potensi_bencana(),
-                             + 'kapasitas': skor Destana desa itu,
-                             + 'jenis_terpilih': list id jenis ancaman,
-                             + 'jenis_detail': list dict {id,label,icon},
-                             + 'jenis_label_text': teks gabungan siap tampil}
-        ringkasan_per_kec : {kecamatan_clean: {'skor', 'kategori',
-                              'jumlah_desa_terisi', 'jumlah_desa',
-                              'jenis_terpilih', 'jenis_detail',
-                              'jenis_label_text'}}
-        daftar_jenis_ancaman : list dict jenis bencana yang tersedia
-                              saat ini (bawaan + custom admin)
-    """
-    if snapshot is None:
-        snapshot = load_destana_snapshot()
-    indikator, threshold_destana, checklists_destana = snapshot
-    if daftar_jenis_ancaman is None:
-        daftar_jenis_ancaman = get_daftar_jenis_ancaman()
-    total_jenis = len(daftar_jenis_ancaman)
-    detail_by_id = {j['id']: j for j in daftar_jenis_ancaman}
-
-    def _format_jenis(jenis_ids):
-        detail = [detail_by_id[j] for j in jenis_ids if j in detail_by_id]
-        teks = ', '.join(f"{jd['icon']} {jd['label']}" for jd in detail) if detail else '-'
-        return detail, teks
-
-    info_per_desa = {}
-    skor_per_kec = {}
-    jumlah_desa_per_kec = {}
-    jenis_union_per_kec = {}
-
-    for desa_key, d in desa_dict.items():
-        key_k = clean_name(d.get('Kecamatan', ''))
-        jumlah_desa_per_kec[key_k] = jumlah_desa_per_kec.get(key_k, 0) + 1
-
-        rec = get_destana_record(
-            d.get('Kecamatan', ''), d.get('Desa', ''), indikator,
-            checklists_destana, threshold_destana,
-        )
-        kapasitas = rec.get('persen', 0)
-
-        jenis_terpilih = d.get('Ancaman_Jenis_Desa')  # None = belum pernah diisi admin
-
-        hasil = potensi_bencana.hitung_potensi_bencana(
-            jenis_terpilih,
-            total_jenis,
-            d.get('Persen_Rentan_Desa', 0),
-            kapasitas,
-        )
-        hasil['kapasitas'] = round(kapasitas, 2)
-        jenis_terpilih_aman = jenis_terpilih or []
-        hasil['jenis_terpilih'] = jenis_terpilih_aman
-        hasil['jenis_detail'], hasil['jenis_label_text'] = _format_jenis(jenis_terpilih_aman)
-        info_per_desa[desa_key] = hasil
-
-        if hasil['lengkap']:
-            skor_per_kec.setdefault(key_k, []).append(hasil['skor'])
-            if jenis_terpilih_aman:
-                jenis_union_per_kec.setdefault(key_k, set()).update(jenis_terpilih_aman)
-
-    ringkasan_per_kec = {}
-    for key_k, jumlah_total in jumlah_desa_per_kec.items():
-        skor_list = skor_per_kec.get(key_k, [])
-        jenis_kec_ids = sorted(jenis_union_per_kec.get(key_k, set()))
-        jenis_kec_detail, jenis_kec_teks = _format_jenis(jenis_kec_ids)
-
-        if skor_list:
-            avg = round(sum(skor_list) / len(skor_list), 2)
-            ringkasan_per_kec[key_k] = {
-                'skor': avg,
-                'kategori': potensi_bencana.kategori_potensi_bencana(avg),
-                'jumlah_desa_terisi': len(skor_list),
-                'jumlah_desa': jumlah_total,
-                'jenis_terpilih': jenis_kec_ids,
-                'jenis_detail': jenis_kec_detail,
-                'jenis_label_text': jenis_kec_teks,
-            }
-        else:
-            ringkasan_per_kec[key_k] = {
-                'skor': None,
-                'kategori': None,
-                'jumlah_desa_terisi': 0,
-                'jumlah_desa': jumlah_total,
-                'jenis_terpilih': jenis_kec_ids,
-                'jenis_detail': jenis_kec_detail,
-                'jenis_label_text': jenis_kec_teks,
-            }
-
-    return info_per_desa, ringkasan_per_kec, daftar_jenis_ancaman
-
-
 # ========================================================
 # ROUTES - HALAMAN PUBLIK
 # ========================================================
@@ -4880,11 +4660,9 @@ def dashboard_admin():
     # Semua bacaan jaringan di bawah saling bebas, jadi dijalankan SERENTAK
     # (waktu total = yang paling lambat, bukan dijumlahkan satu per satu).
     from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=5, thread_name_prefix="admin-io") as ex:
+    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="admin-io") as ex:
         f_users = ex.submit(lambda: db.reference('users').get())
         f_laporan = ex.submit(lambda: db.reference('laporan_edukasi').get())
-        f_destana = ex.submit(load_destana_snapshot)
-        f_jenis = ex.submit(get_daftar_jenis_ancaman)
         f_dokumen = ex.submit(list_documents)
 
         # --- Daftar akun (users) ---
@@ -4892,8 +4670,6 @@ def dashboard_admin():
 
         # --- Daftar laporan edukasi dari semua petugas ---
         laporan_data = f_laporan.result() or {}
-        destana_snapshot = f_destana.result()
-        jenis_ancaman = f_jenis.result()
         try:
             ai_knowledge_documents = f_dokumen.result()
         except Exception as exc:
@@ -4941,22 +4717,11 @@ def dashboard_admin():
     total_desa_kosong = len(desa_kosong_list)
     total_kec_kosong = len(kec_kosong_list)
 
-    # --- Daftar kecamatan untuk form "Input Topografi Manual" ---
-    topografi_kecamatan_list = topografi_manual.daftar_kecamatan(app.root_path)
-
-    # --- Potensi Bencana = Ancaman x Kerentanan / Kapasitas ---
-    # (lihat potensi_bencana.py -- data Ancaman diinput manual admin
-    # karena data hazard resmi belum tersedia)
-    potensi_bencana_info, potensi_bencana_kec_ringkas, daftar_jenis_ancaman = hitung_potensi_bencana_semua_desa(
-        snapshot=destana_snapshot, daftar_jenis_ancaman=jenis_ancaman
-    )
-
     return render_template(
         "Dashboard_admin.html",
-        topografi_kecamatan_list=topografi_kecamatan_list,
-        potensi_bencana_info=potensi_bencana_info,
-        potensi_bencana_kec_ringkas=potensi_bencana_kec_ringkas,
-        daftar_jenis_ancaman=daftar_jenis_ancaman,
+        kajian_ringkasan=kajian_risiko.ringkasan_matriks(MATRIKS_KAJIAN),
+        kajian_wilayah=_wilayah_kajian(),
+        kajian_hazards=kajian_risiko.HAZARDS,
         users=users_data,
         laporan_list=laporan_list,
         total_orang_teredukasi_laporan=total_orang_teredukasi_laporan,
@@ -5122,298 +4887,233 @@ def admin_edit_desa(desa_key):
     return redirect(url_for('dashboard_admin'))
 
 
-# --- Kelola Potensi Bencana (checklist jenis Ancaman, lihat potensi_bencana.py) ---
+# --- Kelola Kajian Risiko Bencana (unggah Excel / isi manual) ---
+#
+# Data = format file matriks BPBD (sheet DESA/KECAMATAN/KABUPATEN). Lihat
+# kajian_risiko.py. Disimpan di Firebase node 'kajian_risiko' (folder deploy
+# Vercel read-only) dan dipakai peta tab "Kajian Risiko Bencana".
 
-@app.route("/admin/potensi-bencana/simpan/<desa_key>", methods=['POST'])
+_KAJIAN_HASH = '#kajian-risiko'  # supaya setelah simpan, tab yang sama terbuka lagi
+
+
+def _kembali_ke_tab_kajian():
+    return redirect(url_for('dashboard_admin') + _KAJIAN_HASH)
+
+
+@lru_cache(maxsize=1)
+def _wilayah_kajian():
+    """{nama kecamatan: [nama desa, ...]} dari GeoJSON peta (nama yang sama dgn peta)."""
+    hasil = {}
+    for f in load_local_geojson_files().get("features", []):
+        props = f.get("properties") or {}
+        kec = str(props.get("nm_kecamatan", "")).strip()
+        desa = get_nama_desa(props).strip()
+        if not kec or not desa or kajian_risiko.key_js(desa) == "waduk":
+            continue
+        hasil.setdefault(kec, set()).add(desa)
+    return {k: sorted(v) for k, v in sorted(hasil.items())}
+
+
+def _cek_wilayah_kajian(level, nama_kec, nama_desa):
+    wilayah = _wilayah_kajian()
+    if level in ("kec", "desa") and nama_kec not in wilayah:
+        raise ValueError("Kecamatan tidak dikenal di peta.")
+    if level == "desa" and nama_desa not in wilayah[nama_kec]:
+        raise ValueError("Desa tidak ditemukan di kecamatan tsb.")
+
+
+def _laporan_kecocokan_kajian(m):
+    """Nama wilayah di data yang tidak ketemu di peta, dan sebaliknya."""
+    fitur_desa = load_local_geojson_files().get("features", [])
+    fitur_kec = [{"properties": {"nm_kecamatan": n}} for n in _wilayah_kajian()]
+    return kajian_risiko.siapkan_data_peta(m, fitur_desa, fitur_kec, get_nama_desa)["laporan"]
+
+
+@app.route("/admin/kajian-risiko/upload", methods=['POST'])
 @role_required('admin')
-def admin_potensi_bencana_simpan(desa_key):
-    if desa_key not in desa_dict:
-        flash("Data desa tidak ditemukan.")
-        return redirect(url_for('dashboard_admin'))
+def admin_kajian_upload():
+    if not validate_csrf():
+        return "CSRF validation failed", 400
 
-    d = desa_dict[desa_key]
+    f = request.files.get('file_matriks')
+    if not f or not f.filename:
+        flash("❌ Pilih file Excel (.xlsx) dulu sebelum mengunggah.")
+        return _kembali_ke_tab_kajian()
 
-    id_jenis_valid = {j['id'] for j in get_daftar_jenis_ancaman()}
-    jenis_terpilih = [jid for jid in request.form.getlist('jenis_ancaman') if jid in id_jenis_valid]
-
-    catatan = str(request.form.get('catatan_ancaman', '') or '').strip()
-    updated_at = datetime.now().isoformat()
-    updated_by = session.get('email', '-')
-
-    d['Ancaman_Jenis_Desa'] = jenis_terpilih
-    d['Ancaman_Catatan_Desa'] = catatan
-    d['Ancaman_Updated_At_Desa'] = updated_at
-    d['Ancaman_Updated_By_Desa'] = updated_by
-
-    # --- Simpan permanen ke Firebase (sama seperti pola desa_overrides) ---
     try:
-        db.reference(f'potensi_bencana_ancaman_desa/{desa_key}').set({
-            'jenis_terpilih': jenis_terpilih,
-            'catatan': catatan,
-            'kecamatan_clean': clean_name(d.get('Kecamatan', '')),
-            'updated_at': updated_at,
-            'updated_by': updated_by,
-        })
-    except Exception as e:
-        flash(f"Data di layar sudah update, tapi GAGAL disimpan permanen ke Firebase: {e}")
-        return redirect(url_for('dashboard_admin'))
+        m = kajian_risiko.muat_matriks_dari_bytes(
+            f.read(kajian_risiko.MAX_UKURAN_UNGGAH + 1), f.filename
+        )
+    except ValueError as e:
+        flash(f"❌ Unggahan ditolak: {e}")
+        return _kembali_ke_tab_kajian()
 
+    meta = {
+        'file': m['file'],
+        'sumber': 'upload',
+        'updated_at': datetime.now().isoformat(timespec='seconds'),
+        'updated_by': session.get('email', '-'),
+        'version': int(time.time() * 1000),
+    }
+    try:
+        db.reference('kajian_risiko').set(kajian_risiko.matriks_ke_dict(m, meta))
+    except Exception as e:
+        flash(f"❌ File terbaca, tapi GAGAL disimpan ke Firebase (data lama tetap dipakai): {e}")
+        return _kembali_ke_tab_kajian()
+
+    m['meta'] = meta
+    with _KAJIAN_LOCK:
+        _pasang_matriks_kajian(m, True)
     invalidate_map_cache()
-    flash(
-        f"Data Ancaman desa {d.get('Desa', '-')} berhasil disimpan "
-        f"({len(jenis_terpilih)} jenis bencana dipilih). "
-        f"Skor Potensi Bencana dihitung ulang otomatis."
+
+    pesan = (
+        f"Kajian Risiko berhasil diganti dengan {m['file']}: "
+        f"{len(m['desa'])} desa, {len(m['kec'])} kecamatan, {len(m['kab'])} baris kabupaten."
     )
-    return redirect(url_for('dashboard_admin'))
-
-
-@app.route("/admin/potensi-bencana/jenis/tambah", methods=['POST'])
-@role_required('admin')
-def admin_potensi_bencana_tambah_jenis():
-    label = str(request.form.get('label_jenis_baru', '') or '').strip()
-    if not label:
-        flash("Nama jenis ancaman baru tidak boleh kosong.")
-        return redirect(url_for('dashboard_admin'))
-
-    jenis_id = potensi_bencana.slugify_jenis_id(label)
-    daftar_sekarang = get_daftar_jenis_ancaman()
-
-    if any(j['id'] == jenis_id for j in daftar_sekarang):
-        flash(f"Jenis ancaman '{label}' sudah ada di checklist.")
-        return redirect(url_for('dashboard_admin'))
-
     try:
-        db.reference(f'daftar_jenis_ancaman_custom/{jenis_id}').set({
-            'label': label,
-            'icon': potensi_bencana.ICON_JENIS_ANCAMAN_CUSTOM,
-            'added_by': session.get('email', '-'),
-            'added_at': datetime.now().isoformat(),
+        lap = _laporan_kecocokan_kajian(m)
+        if lap['matriks_tak_terpakai']:
+            pesan += (
+                f" ⚠️ {len(lap['matriks_tak_terpakai'])} desa di Excel tidak ketemu di peta "
+                f"(cek ejaan): {'; '.join(lap['matriks_tak_terpakai'][:5])}"
+                + (" ..." if len(lap['matriks_tak_terpakai']) > 5 else "")
+            )
+        if lap['desa_tanpa_data']:
+            pesan += f" ⚠️ {len(lap['desa_tanpa_data'])} desa di peta belum punya data."
+    except Exception as e:  # noqa: BLE001 - laporan hanya tambahan
+        print(f"⚠️  Laporan kecocokan Kajian Risiko gagal: {e}")
+    if m['warnings']:
+        pesan += f" ({len(m['warnings'])} catatan dari pembacaan file, lihat kartu status.)"
+    flash(pesan)
+    return _kembali_ke_tab_kajian()
+
+
+def _simpan_record_kajian(level, kk, dk, hz, rec):
+    """
+    Terapkan 1 perubahan (rec=None -> hapus) ke memori lalu simpan ke Firebase.
+    Kalau data aktif masih berasal dari file bawaan, SELURUH matriks dipindah
+    ke Firebase dulu (supaya node Firebase tidak berisi 1 baris saja lalu
+    menimpa data bawaan saat server restart). Gagal simpan -> memori dikembalikan.
+    """
+    global MATRIKS_KAJIAN
+    with _KAJIAN_LOCK:
+        m = MATRIKS_KAJIAN or {
+            "file": "isian manual", "desa": {}, "kec": {}, "kab": {}, "warnings": [],
+        }
+        lama = kajian_risiko.cari_record(m, level, kk, dk, hz)
+        lama = dict(lama) if lama else None
+        kajian_risiko.terapkan_record(m, level, kk, dk, hz, rec)
+
+        versi = int(time.time() * 1000)
+        meta = dict(m.get('meta') or {})
+        meta.update({
+            'file': m.get('file', '-'),
+            'sumber': 'manual',
+            'updated_at': datetime.now().isoformat(timespec='seconds'),
+            'updated_by': session.get('email', '-'),
+            'version': versi,
         })
-    except Exception as e:
-        flash(f"Gagal menyimpan jenis ancaman baru ke Firebase: {e}")
-        return redirect(url_for('dashboard_admin'))
+        try:
+            ref = db.reference('kajian_risiko')
+            if _KAJIAN_DI_FIREBASE:
+                ref.update({
+                    kajian_risiko.path_firebase_record(level, kk, dk, hz): rec,
+                    'meta/sumber': meta['sumber'],
+                    'meta/updated_at': meta['updated_at'],
+                    'meta/updated_by': meta['updated_by'],
+                    'meta/version': versi,
+                })
+            else:
+                ref.set(kajian_risiko.matriks_ke_dict(m, meta))
+        except Exception:
+            kajian_risiko.terapkan_record(m, level, kk, dk, hz, lama)
+            raise
 
+        m['meta'] = meta
+        _pasang_matriks_kajian(m, True)
     invalidate_map_cache()
-    flash(
-        f"Jenis ancaman '{label}' berhasil ditambahkan ke checklist. "
-        f"Skor Potensi Bencana seluruh desa dihitung ulang otomatis "
-        f"(total jenis ancaman berubah)."
-    )
-    return redirect(url_for('dashboard_admin'))
 
 
-@app.route("/admin/potensi-bencana/jenis/hapus/<jenis_id>", methods=['POST'])
+@app.route("/admin/kajian-risiko/simpan", methods=['POST'])
 @role_required('admin')
-def admin_potensi_bencana_hapus_jenis(jenis_id):
-    if jenis_id in potensi_bencana.DEFAULT_JENIS_ANCAMAN_IDS:
-        flash("Jenis ancaman bawaan sistem tidak bisa dihapus dari checklist.")
-        return redirect(url_for('dashboard_admin'))
+def admin_kajian_simpan():
+    if not validate_csrf():
+        return "CSRF validation failed", 400
+    try:
+        level, kk, dk, hz, rec = kajian_risiko.buat_record_manual(request.form)
+        _cek_wilayah_kajian(level, rec.get('kec', ''), rec.get('desa', ''))
+    except ValueError as e:
+        flash(f"❌ {e}")
+        return _kembali_ke_tab_kajian()
 
     try:
-        db.reference(f'daftar_jenis_ancaman_custom/{jenis_id}').delete()
+        _simpan_record_kajian(level, kk, dk, hz, rec)
     except Exception as e:
-        flash(f"Gagal menghapus jenis ancaman: {e}")
-        return redirect(url_for('dashboard_admin'))
+        flash(f"❌ Gagal menyimpan ke Firebase, perubahan dibatalkan: {e}")
+        return _kembali_ke_tab_kajian()
 
-    invalidate_map_cache()
-    flash("Jenis ancaman custom berhasil dihapus dari checklist.")
-    return redirect(url_for('dashboard_admin'))
+    label = kajian_risiko.HAZARD_BY_ID[hz]['label']
+    lokasi = rec.get('desa') or rec.get('kec') or 'Kabupaten Bandung Barat'
+    flash(f"Data kajian risiko {label} untuk {lokasi} disimpan (Kelas Risiko: {rec['r']}).")
+    return _kembali_ke_tab_kajian()
+
+
+@app.route("/admin/kajian-risiko/hapus", methods=['POST'])
+@role_required('admin')
+def admin_kajian_hapus():
+    if not validate_csrf():
+        return "CSRF validation failed", 400
+    try:
+        level, kk, dk, hz, nama_kec, nama_desa = kajian_risiko.kunci_dari_form(request.form)
+        _cek_wilayah_kajian(level, nama_kec, nama_desa)
+    except ValueError as e:
+        flash(f"❌ {e}")
+        return _kembali_ke_tab_kajian()
+
+    if kajian_risiko.cari_record(MATRIKS_KAJIAN, level, kk, dk, hz) is None:
+        flash("❌ Data yang mau dihapus tidak ditemukan.")
+        return _kembali_ke_tab_kajian()
+
+    try:
+        _simpan_record_kajian(level, kk, dk, hz, None)
+    except Exception as e:
+        flash(f"❌ Gagal menghapus di Firebase, perubahan dibatalkan: {e}")
+        return _kembali_ke_tab_kajian()
+
+    flash(f"Data kajian risiko {kajian_risiko.HAZARD_BY_ID[hz]['label']} untuk "
+          f"{nama_desa or nama_kec or 'Kabupaten Bandung Barat'} dihapus.")
+    return _kembali_ke_tab_kajian()
+
+
+@app.route("/admin/kajian-risiko/data")
+@role_required('admin')
+def admin_kajian_data():
+    """Isi awal form manual: nilai yang sudah tersimpan untuk wilayah + bencana terpilih."""
+    try:
+        level, kk, dk, hz, nama_kec, nama_desa = kajian_risiko.kunci_dari_form(request.args)
+    except ValueError as e:
+        return jsonify({"ada": False, "error": str(e)}), 400
+    rec = kajian_risiko.cari_record(MATRIKS_KAJIAN, level, kk, dk, hz)
+    if not rec:
+        return jsonify({"ada": False})
+    return jsonify({"ada": True, "record": {
+        "kelas_risiko": rec.get("r"), "kelas_bahaya": rec.get("b"),
+        "kelas_kerentanan": rec.get("v"), "kelas_kapasitas": rec.get("c"),
+        "penduduk": rec.get("p"), "kerugian": rec.get("k"), "luas_risiko": rec.get("lr"),
+    }})
+
+
+@app.route("/admin/kajian-risiko/template")
+@role_required('admin')
+def admin_kajian_template():
+    from flask import send_file
+    path = os.path.join(app.root_path, 'data', 'template', 'TEMPLATE_KAJIAN_RISIKO_BENCANA.xlsx')
+    return send_file(path, as_attachment=True, download_name='TEMPLATE_KAJIAN_RISIKO_BENCANA.xlsx')
 
 
 # ========================================================
 # ROUTES - DASHBOARD PETUGAS
 # ========================================================
-
-# ========================================================
-# INPUT TOPOGRAFI MANUAL VIA GAMBAR
-# ========================================================
-# Alur 2 langkah (SENGAJA tidak langsung simpan):
-#   1. admin_topografi_analisis  -> upload gambar + scope, AI membaca
-#      gambar, hasil dikembalikan sebagai PREVIEW (belum permanen).
-#   2. admin_topografi_simpan    -> admin sudah lihat/koreksi preview,
-#      baru di sini datanya ditulis ke Firebase & diterapkan ke
-#      kec_dict/desa_dict yang sedang aktif di memori.
-# Lihat topografi_manual.py untuk penjelasan lengkap & batasannya.
-
-def _ambil_wilayah_untuk_scope(scope, kecamatan_clean=None):
-    """
-    scope: 'kbb' (seluruh KBB, unit kecamatan) | 'kecamatan' (1
-    kecamatan) | 'desa' (semua desa dalam 1 kecamatan).
-    Return list nama wilayah (label asli, bukan hasil clean_name)
-    yang perlu diminta ke AI vision.
-    """
-    if scope == 'kbb':
-        return [k['nama'] for k in topografi_manual.daftar_kecamatan(app.root_path)]
-
-    if scope == 'kecamatan':
-        semua = topografi_manual.daftar_kecamatan(app.root_path)
-        if kecamatan_clean:
-            return [k['nama'] for k in semua if k['clean'] == kecamatan_clean]
-        return [k['nama'] for k in semua]
-
-    if scope == 'desa':
-        if not kecamatan_clean:
-            return []
-        return [d['nama'] for d in topografi_manual.daftar_desa(app.root_path, kecamatan_clean)]
-
-    return []
-
-
-@app.route("/admin/topografi/wilayah/<kecamatan_clean>")
-@role_required('admin')
-def admin_topografi_desa_list(kecamatan_clean):
-    """Dipakai dropdown desa bertingkat (AJAX) di form upload topografi."""
-    daftar = topografi_manual.daftar_desa(app.root_path, kecamatan_clean)
-    return jsonify({"desa": daftar})
-
-
-@app.route("/admin/topografi/analisis", methods=["POST"])
-@role_required('admin')
-def admin_topografi_analisis():
-    if not validate_csrf():
-        return jsonify({"error": "CSRF validation failed"}), 400
-
-    scope = (request.form.get('scope') or '').strip()
-    kecamatan_clean = (request.form.get('kecamatan_clean') or '').strip() or None
-
-    if scope not in ('kbb', 'kecamatan', 'desa'):
-        return jsonify({"error": "Pilih dulu scope input: Seluruh KBB / Per Kecamatan / Per Desa."}), 400
-
-    if scope in ('kecamatan', 'desa') and not kecamatan_clean:
-        return jsonify({"error": "Pilih kecamatan terlebih dahulu."}), 400
-
-    file = request.files.get('gambar')
-    if not file or not file.filename:
-        return jsonify({"error": "Gambar peta topografi wajib diupload."}), 400
-
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
-    if ext not in ALLOWED_TOPO_IMAGE_EXT:
-        return jsonify({"error": "Format gambar yang didukung: PNG, JPG, JPEG, WEBP."}), 400
-
-    image_bytes = file.read()
-    if not image_bytes:
-        return jsonify({"error": "Gambar kosong / gagal dibaca."}), 400
-    if len(image_bytes) > MAX_TOPO_IMAGE_BYTES:
-        return jsonify({"error": "Ukuran gambar maksimal 8 MB. Kompres dulu gambarnya."}), 400
-
-    mime_type = file.mimetype or (f"image/jpeg" if ext == 'jpg' else f"image/{ext}")
-
-    daftar_wilayah = _ambil_wilayah_untuk_scope(scope, kecamatan_clean)
-    if not daftar_wilayah:
-        return jsonify({"error": "Tidak ada wilayah yang bisa dianalisis untuk pilihan ini."}), 400
-
-    hasil, error = topografi_manual.analisis_gambar_dengan_ai(
-        groq_client, GROQ_VISION_MODEL, image_bytes, mime_type, daftar_wilayah
-    )
-
-    if error:
-        return jsonify({"error": error}), 502
-
-    return jsonify({
-        "scope": scope,
-        "kecamatan_clean": kecamatan_clean,
-        "model": GROQ_VISION_MODEL,
-        "hasil": hasil,
-    })
-
-
-@app.route("/admin/topografi/simpan", methods=["POST"])
-@role_required('admin')
-def admin_topografi_simpan():
-    if not validate_csrf():
-        return jsonify({"error": "CSRF validation failed"}), 400
-
-    payload = request.get_json(silent=True) or {}
-    scope = (payload.get('scope') or '').strip()
-    kecamatan_clean = (payload.get('kecamatan_clean') or '').strip() or None
-    daftar_hasil = payload.get('hasil') or []
-
-    if scope not in ('kbb', 'kecamatan', 'desa') or not daftar_hasil:
-        return jsonify({"error": "Data yang dikirim tidak lengkap."}), 400
-    if scope == 'desa' and not kecamatan_clean:
-        return jsonify({"error": "Kecamatan induk tidak diketahui."}), 400
-
-    diterapkan = 0
-    gagal = []
-
-    for item in daftar_hasil:
-        nama_wilayah = str(item.get('wilayah', '')).strip()
-        if not nama_wilayah:
-            continue
-
-        pr, ps, pt = topografi_manual.normalisasi_100(
-            item.get('persen_rendah', 0),
-            item.get('persen_sedang', 0),
-            item.get('persen_tinggi', 0),
-        )
-        breakdown = {'persen_rendah': pr, 'persen_sedang': ps, 'persen_tinggi': pt}
-        catatan = str(item.get('catatan', '') or '')
-
-        if scope == 'desa':
-            level = 'desa'
-            desa_clean = clean_name(nama_wilayah)
-            target_dict_ = desa_dict
-            lookup_key = topografi_manual.kunci_desa(kecamatan_clean, desa_clean)
-
-            if lookup_key not in desa_dict:
-                cocok = [
-                    k for k, v in desa_dict.items()
-                    if clean_name(v.get('Kecamatan', '')) == kecamatan_clean
-                    and clean_name(v.get('Desa', '')) == desa_clean
-                ]
-                if cocok:
-                    lookup_key = cocok[0]
-
-            firebase_node = 'topografi_manual_desa'
-            firebase_key = lookup_key
-            induk_kecamatan_clean = kecamatan_clean
-        else:
-            level = 'kecamatan'
-            kec_clean_target = clean_name(nama_wilayah)
-            target_dict_ = kec_dict
-            lookup_key = kec_clean_target
-            firebase_node = 'topografi_manual_kec'
-            firebase_key = kec_clean_target
-            induk_kecamatan_clean = kec_clean_target
-
-        ok = terapkan_topografi_manual(target_dict_, lookup_key, breakdown, level)
-        if not ok:
-            gagal.append(f"{nama_wilayah} (wilayah tidak ditemukan di data)")
-            continue
-
-        # Kalau input di level kecamatan, sebar ke desa-desa di
-        # kecamatan itu yang belum punya input manual per-desa sendiri
-        # -- supaya desa yang belum diinput manual tetap ikut update.
-        if level == 'kecamatan':
-            for dk, dv in desa_dict.items():
-                if (
-                    clean_name(dv.get('Kecamatan', '')) == kec_clean_target
-                    and dv.get('Topografi_Sumber_Kec') != 'manual_ai_gambar'
-                ):
-                    terapkan_topografi_manual(desa_dict, dk, breakdown, 'kecamatan')
-
-        try:
-            db.reference(f'{firebase_node}/{firebase_key}').set({
-                'wilayah': nama_wilayah,
-                'kecamatan_clean': induk_kecamatan_clean,
-                'persen_rendah': pr,
-                'persen_sedang': ps,
-                'persen_tinggi': pt,
-                'catatan': catatan,
-                'updated_at': datetime.now().isoformat(),
-                'updated_by': session.get('email', '-'),
-            })
-            diterapkan += 1
-        except Exception as e:
-            gagal.append(f"{nama_wilayah} (gagal simpan permanen ke Firebase: {e})")
-
-    if gagal and diterapkan == 0:
-        return jsonify({"ok": False, "diterapkan": 0, "gagal": gagal}), 500
-    if gagal:
-        return jsonify({"ok": True, "diterapkan": diterapkan, "gagal": gagal}), 207
-
-    return jsonify({"ok": True, "diterapkan": diterapkan})
-
 
 _QUERY_LAPORAN_PETUGAS_OK = True
 

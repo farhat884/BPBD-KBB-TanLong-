@@ -162,7 +162,7 @@
           {% if messages %}
             <ul class="flash-box">
             {% for message in messages %}
-              <li>✅ {{ message }}</li>
+              <li>{% if message.startswith('❌') %}{{ message }}{% else %}✅ {{ message }}{% endif %}</li>
             {% endfor %}
             </ul>
           {% endif %}
@@ -198,8 +198,7 @@
             <button class="tab-btn" onclick="showTab('desa')">🏘️ Kelola Data Desa</button>
             <button class="tab-btn" onclick="showTab('laporan')">📋 Laporan Edukasi Petugas</button>
             <button class="tab-btn" onclick="showTab('ai-knowledge')">🤖 Knowledge AI</button>
-            <button class="tab-btn" onclick="showTab('topografi')">🗺️ Topografi Manual</button>
-            <button class="tab-btn" onclick="showTab('potensi-bencana')">🌋 Potensi Bencana</button>
+            <button class="tab-btn" onclick="showTab('kajian-risiko')">🌋 Kajian Risiko Bencana</button>
             <button class="tab-btn" id="btn-tab-kosong" onclick="showTab('kosong')">
                 ⚠️ Data Kosong
                 {% if total_desa_kosong > 0 %}<span class="badge" style="background:rgba(239,68,68,0.25); color:#fca5a5; margin-left:4px;">{{ total_desa_kosong }}</span>{% endif %}
@@ -434,256 +433,136 @@
             </div>
         </div>
 
-        <!-- TAB: TOPOGRAFI MANUAL -->
-        <div class="tab-panel" id="tab-topografi">
-            <div class="card">
-                <h3>🗺️ Input Topografi Manual via Gambar</h3>
-                <p style="color:#94a3b8;line-height:1.6;">
-                    Upload gambar peta topografi/ketinggian wilayah (yang sudah ada label nama kecamatan/desa
-                    &amp; gradasi warna dataran rendah&ndash;sedang&ndash;tinggi). AI akan membaca gambar dan
-                    memperkirakan <b>proporsi</b> tiap kategori topografi per wilayah &mdash; tidak dianggap
-                    seragam satu warna untuk satu desa/kecamatan. Hasil AI selalu tampil sebagai
-                    <b>pratinjau yang bisa dikoreksi</b> dulu sebelum disimpan permanen.
-                </p>
+        <!-- TAB: KAJIAN RISIKO BENCANA -->
+        <div class="tab-panel" id="tab-kajian-risiko">
 
-                <div class="form-grid">
-                    <div style="grid-column:1/-1;">
-                        <label>Level input</label>
-                        <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:6px;">
-                            <label style="display:flex;align-items:center;gap:6px;font-weight:normal;">
-                                <input type="radio" name="topoScope" value="kbb" checked> Seluruh KBB (per kecamatan)
-                            </label>
-                            <label style="display:flex;align-items:center;gap:6px;font-weight:normal;">
-                                <input type="radio" name="topoScope" value="kecamatan"> Per Kecamatan
-                            </label>
-                            <label style="display:flex;align-items:center;gap:6px;font-weight:normal;">
-                                <input type="radio" name="topoScope" value="desa"> Per Desa
-                            </label>
+            <div class="card">
+                <h3>📊 Data Kajian Risiko yang Sedang Dipakai Peta</h3>
+                {% if kajian_ringkasan %}
+                <p style="color:#94a3b8;line-height:1.7;margin-top:0;">
+                    Sumber:
+                    {% if kajian_ringkasan.sumber == 'upload' %}<b>Excel yang diunggah</b>
+                    {% elif kajian_ringkasan.sumber == 'manual' %}<b>Isian manual</b> (dasar file: {{ kajian_ringkasan.file }})
+                    {% else %}<b>File bawaan aplikasi</b>{% endif %}
+                    &mdash; <code>{{ kajian_ringkasan.file }}</code><br>
+                    {% if kajian_ringkasan.updated_at %}Terakhir diubah {{ kajian_ringkasan.updated_at }} oleh {{ kajian_ringkasan.updated_by }}.<br>{% endif %}
+                    Tercatat: <b>{{ kajian_ringkasan.n_desa }}</b> desa, <b>{{ kajian_ringkasan.n_kec }}</b> kecamatan,
+                    <b>{{ kajian_ringkasan.n_kab }}</b> baris kabupaten.
+                </p>
+                <div class="table-wrap"><table><thead><tr>
+                    <th>Jenis Bencana</th><th>Desa Tercatat</th><th>Kecamatan Tercatat</th><th>Kelas Risiko Kabupaten</th>
+                </tr></thead><tbody>
+                {% for h in kajian_ringkasan.per_hazard %}
+                <tr>
+                    <td>{{ h.icon }} {{ h.label }}</td><td>{{ h.desa }}</td><td>{{ h.kec }}</td>
+                    <td>{% if h.kab in ('Rendah','Sedang','Tinggi') %}<span class="badge badge-{{ h.kab | lower }}">{{ h.kab }}</span>{% else %}<span class="badge badge-default">&ndash;</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+                </tbody></table></div>
+                {% if kajian_ringkasan.n_warnings %}
+                <details style="margin-top:14px;color:#fdba74;">
+                    <summary style="cursor:pointer;">⚠️ {{ kajian_ringkasan.n_warnings }} catatan dari pembacaan file (klik untuk lihat)</summary>
+                    <ul style="color:#94a3b8;font-size:0.82rem;line-height:1.6;">
+                        {% for w in kajian_ringkasan.warnings %}<li>{{ w }}</li>{% endfor %}
+                        {% if kajian_ringkasan.n_warnings > kajian_ringkasan.warnings|length %}<li>... dan {{ kajian_ringkasan.n_warnings - kajian_ringkasan.warnings|length }} catatan lain.</li>{% endif %}
+                    </ul>
+                </details>
+                {% endif %}
+                {% else %}
+                <div class="empty-msg">Belum ada data kajian risiko. Unggah file Excel atau isi manual di bawah.</div>
+                {% endif %}
+            </div>
+
+            <div class="card">
+                <h3>⬆️ Unggah Excel</h3>
+                <p style="color:#94a3b8;line-height:1.6;margin-top:0;">
+                    Format file <b>sama persis seperti file matriks BPBD</b>: tiga sheet bernama <code>DESA</code>,
+                    <code>KECAMATAN</code>, <code>KABUPATEN</code>; judul kolom di baris ke-4 (JENIS BAHAYA, KECAMATAN,
+                    DESA/KELURAHAN, ... RISIKO) dan data mulai baris ke-8. Belum punya file? Unduh template-nya dulu.
+                    <br><b>Perhatian:</b> unggahan <u>menggantikan seluruh data</u> di atas (termasuk isian manual sebelumnya).
+                </p>
+                <form action="{{ url_for('admin_kajian_upload') }}" method="POST" enctype="multipart/form-data"
+                      onsubmit="return confirm('Data kajian risiko yang sekarang akan DIGANTI seluruhnya dengan isi file ini. Lanjutkan?');"
+                      style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                    <input type="file" name="file_matriks" accept=".xlsx" required style="flex:1;min-width:240px;">
+                    <button type="submit" class="btn btn-orange">Unggah &amp; Terapkan</button>
+                    <a href="{{ url_for('admin_kajian_template') }}" class="btn btn-red" style="text-decoration:none;display:inline-block;">📥 Unduh Template Excel</a>
+                </form>
+                <p style="color:#64748b;font-size:0.8rem;margin-bottom:0;">Maksimal 4 MB, format .xlsx. Nama desa/kecamatan harus sama dengan nama di peta (ejaan yang tidak cocok akan dilaporkan setelah unggah).</p>
+            </div>
+
+            <div class="card">
+                <h3>✍️ Isi / Ubah Manual per Baris</h3>
+                <p style="color:#94a3b8;line-height:1.6;margin-top:0;">
+                    Sama seperti satu baris di Excel: pilih tingkat wilayah, wilayahnya, dan jenis bencana. Kalau datanya
+                    sudah ada, isiannya muncul otomatis dan bisa diubah. Hanya <b>Kelas Risiko</b> yang wajib
+                    (itu yang mewarnai peta); kolom lain boleh dikosongkan.
+                </p>
+                <form id="kajianForm" action="{{ url_for('admin_kajian_simpan') }}" method="POST">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                    <div class="form-grid">
+                        <div style="grid-column:1/-1;">
+                            <label>Tingkat wilayah (= sheet di Excel)</label>
+                            <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:6px;">
+                                <label style="display:flex;align-items:center;gap:6px;font-weight:normal;"><input type="radio" name="level" value="desa" checked> Desa / Kelurahan</label>
+                                <label style="display:flex;align-items:center;gap:6px;font-weight:normal;"><input type="radio" name="level" value="kec"> Kecamatan</label>
+                                <label style="display:flex;align-items:center;gap:6px;font-weight:normal;"><input type="radio" name="level" value="kab"> Kabupaten (KBB)</label>
+                            </div>
+                        </div>
+                        <div id="kjKecWrap">
+                            <label>Kecamatan</label>
+                            <select name="kecamatan" id="kjKec"><option value="">-- pilih kecamatan --</option></select>
+                        </div>
+                        <div id="kjDesaWrap">
+                            <label>Desa / Kelurahan</label>
+                            <select name="desa" id="kjDesa"><option value="">-- pilih desa --</option></select>
+                        </div>
+                        <div>
+                            <label>Jenis Bahaya</label>
+                            <select name="hazard" id="kjHazard" required>
+                                {% for h in kajian_hazards %}<option value="{{ h.id }}">{{ h.icon }} {{ h.label }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div style="grid-column:1/-1;">
+                            <div id="kjStatus" style="display:none;padding:10px 12px;border-radius:8px;background:#0f172a;color:#cbd5e1;font-size:0.85rem;"></div>
+                        </div>
+                        <div>
+                            <label>Kelas Bahaya</label>
+                            <select name="kelas_bahaya" id="kjB"><option value="">-</option><option>Rendah</option><option>Sedang</option><option>Tinggi</option></select>
+                        </div>
+                        <div>
+                            <label>Potensi Penduduk Terpapar (jiwa)</label>
+                            <input type="number" name="penduduk" id="kjP" min="0" step="any" placeholder="opsional">
+                        </div>
+                        <div>
+                            <label>Total Kerugian (juta rupiah)</label>
+                            <input type="number" name="kerugian" id="kjK" min="0" step="any" placeholder="opsional">
+                        </div>
+                        <div>
+                            <label>Kelas Kerentanan</label>
+                            <select name="kelas_kerentanan" id="kjV"><option value="">-</option><option>Rendah</option><option>Sedang</option><option>Tinggi</option></select>
+                        </div>
+                        <div>
+                            <label>Kelas Kapasitas</label>
+                            <select name="kelas_kapasitas" id="kjC"><option value="">-</option><option>Rendah</option><option>Sedang</option><option>Tinggi</option></select>
+                        </div>
+                        <div>
+                            <label>Luas Risiko Total (ha)</label>
+                            <input type="number" name="luas_risiko" id="kjLR" min="0" step="any" placeholder="opsional">
+                        </div>
+                        <div>
+                            <label>Kelas Risiko <span style="color:#f97316;">*wajib</span></label>
+                            <select name="kelas_risiko" id="kjR" required><option value="">-- pilih --</option><option>Rendah</option><option>Sedang</option><option>Tinggi</option></select>
+                        </div>
+                        <div style="grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap;">
+                            <button type="submit" class="btn btn-orange">💾 Simpan</button>
+                            <button type="submit" class="btn btn-red" id="kjHapus" formnovalidate
+                                    formaction="{{ url_for('admin_kajian_hapus') }}"
+                                    onclick="return confirm('Hapus data kajian risiko untuk kombinasi wilayah + bencana ini?');">🗑️ Hapus Data Ini</button>
                         </div>
                     </div>
-
-                    <div id="topoKecamatanWrap" style="display:none;">
-                        <label>Pilih Kecamatan</label>
-                        <select id="topoKecamatanSelect">
-                            <option value="">-- pilih kecamatan --</option>
-                            {% for k in topografi_kecamatan_list %}
-                            <option value="{{ k.clean }}">{{ k.nama }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div id="topoDesaChipsWrap" style="grid-column:1/-1;display:none;">
-                        <label>Desa yang akan dianalisis dari gambar ini</label>
-                        <div id="topoDesaChips" style="color:#cbd5e1;font-size:13px;line-height:1.8;"></div>
-                    </div>
-
-                    <div style="grid-column:1/-1;">
-                        <label>Gambar peta topografi (PNG/JPG/JPEG/WEBP, maksimal 8 MB)</label>
-                        <input id="topoImageFile" type="file" accept=".png,.jpg,.jpeg,.webp">
-                    </div>
-
-                    <div style="grid-column:1/-1;">
-                        <div id="topoStatus" style="display:none;padding:12px;border-radius:8px;background:#0f172a;color:#cbd5e1;"></div>
-                    </div>
-
-                    <div>
-                        <button class="btn btn-orange" id="topoAnalisisBtn" type="button">🔎 Analisis dengan AI</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card" id="topoPreviewCard" style="display:none;">
-                <h3>📝 Pratinjau Hasil AI &mdash; boleh dikoreksi sebelum disimpan</h3>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr>
-                            <th>Wilayah</th><th>% Rendah</th><th>% Sedang</th><th>% Tinggi</th>
-                            <th>Kategori Dominan</th><th>Catatan AI</th>
-                        </tr></thead>
-                        <tbody id="topoPreviewBody"></tbody>
-                    </table>
-                </div>
-                <button class="btn btn-orange" id="topoSimpanBtn" type="button" style="margin-top:12px;">💾 Simpan Permanen</button>
-            </div>
-
-            <div class="card">
-                <h3>📊 Status Topografi Saat Ini per Kecamatan</h3>
-                {% if kec_list %}
-                <div class="table-wrap"><table><thead><tr>
-                    <th>Kecamatan</th><th>Kategori Topografi</th><th>Sumber Data</th><th>Kategori Risiko Gabungan</th>
-                </tr></thead><tbody>
-                {% for kec_key, kec in kec_list %}
-                <tr>
-                    <td>{{ kec.get('Kecamatan', kec_key) }}</td>
-                    <td>{{ kec.get('Kategori_Topografi_Kec', '-') }}</td>
-                    <td>
-                        {% if kec.get('Topografi_Sumber_Kec') == 'manual_ai_gambar' %}
-                            ✅ Input manual (gambar)
-                        {% elif kec.get('Kategori_Topografi_Kec') %}
-                            🌐 API / tabel referensi
-                        {% else %}
-                            &ndash;
-                        {% endif %}
-                    </td>
-                    <td>{{ kec.get('Kategori_Risiko_Gabungan_Kec', '-') }}</td>
-                </tr>
-                {% endfor %}
-                </tbody></table></div>
-                {% else %}<div class="empty-msg">Belum ada data kecamatan.</div>{% endif %}
-            </div>
-        </div>
-
-        <!-- TAB: POTENSI BENCANA -->
-        <div class="tab-panel" id="tab-potensi-bencana">
-            <div class="card" style="border-left:4px solid #f59e0b;">
-                <h3>ℹ️ Catatan: peta kini memakai Kajian Risiko Bencana</h3>
-                <p style="color:#94a3b8;line-height:1.6;">
-                    Tab peta <b>&quot;Kajian Risiko Bencana&quot;</b> (dulu &quot;Potensi Bencana&quot;) sekarang membaca tingkat risiko
-                    <u>langsung dari tabulasi BPBD</u> (file <code>data/MATRIKS_KAJIAN_RISIKO_BENCANA_KAB__BANDUNGBARAT_V*.xlsx</code>),
-                    per jenis bencana, <b>bukan</b> dari skor rumus di halaman ini. Checklist Ancaman &amp; skor di bawah
-                    <b>tidak lagi memengaruhi peta</b>; dibiarkan hanya sebagai data lama. Untuk memperbarui peta,
-                    ganti file matriks di folder <code>data/</code> lalu deploy ulang.
-                </p>
-            </div>
-
-            <div class="card">
-                <h3>🌋 Potensi Bencana &mdash; Ancaman &times; Kerentanan &divide; Kapasitas</h3>
-                <p style="color:#94a3b8;line-height:1.6;">
-                    Skor ini dihitung otomatis dari rumus umum manajemen risiko bencana:
-                    <b>Potensi Bencana = (Ancaman &times; Kerentanan) &divide; Kapasitas</b>.
-                    <b>Ancaman</b> = jumlah <u>jenis bencana</u> yang dicentang berpotensi terjadi di desa itu
-                    dibagi total jenis yang tersedia di checklist (mis. Batujajar dicentang Banjir + Tanah Longsor
-                    + Gempa Bumi &rarr; ancaman = 3 dari total jenis yang ada).
-                    <b>Kerentanan</b> diambil dari data % Rentan yang sudah ada, dan
-                    <b>Kapasitas</b> dari skor Destana yang sudah ada.
-                    Selama sebuah desa belum pernah diisi checklist Ancaman-nya, skor Potensi Bencana desa itu akan
-                    tertulis &quot;Belum diisi&quot; &mdash; sistem tidak menebak nilainya sendiri.
-                </p>
-            </div>
-
-            <div class="card">
-                <h3>🗂️ Kelola Jenis Bencana (Checklist Ancaman)</h3>
-                <p style="color:#94a3b8; font-size:0.85rem; margin-top:-8px;">
-                    Jenis di bawah muncul sebagai pilihan checklist Ancaman pada tabel desa. Tambah jenis baru kalau
-                    ada bahaya lain yang belum tercantum. Jenis bawaan sistem tidak bisa dihapus.
-                </p>
-                <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
-                    {% for jenis in daftar_jenis_ancaman %}
-                    <span class="badge badge-default" style="display:inline-flex; align-items:center; gap:6px; padding:6px 10px;">
-                        {{ jenis.icon }} {{ jenis.label }}
-                        {% if jenis.custom %}
-                        <form action="{{ url_for('admin_potensi_bencana_hapus_jenis', jenis_id=jenis.id) }}" method="POST"
-                              style="display:inline;" onsubmit="return confirm('Hapus jenis ancaman &quot;{{ jenis.label }}&quot; dari checklist?');">
-                            <button type="submit" title="Hapus jenis ancaman ini"
-                                    style="background:none; border:none; color:#fca5a5; cursor:pointer; font-weight:bold; padding:0 0 0 4px;">&times;</button>
-                        </form>
-                        {% endif %}
-                    </span>
-                    {% endfor %}
-                </div>
-                <form action="{{ url_for('admin_potensi_bencana_tambah_jenis') }}" method="POST" style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <input type="text" name="label_jenis_baru" placeholder="Nama jenis bencana baru, mis. Abrasi Pantai" required style="flex:1; min-width:220px;">
-                    <button type="submit" class="btn btn-orange">+ Tambah Jenis Ancaman</button>
                 </form>
-            </div>
-
-            <div class="card">
-                <h3>📝 Input / Edit Checklist Ancaman per Desa</h3>
-                <p style="color:#94a3b8; font-size:0.85rem; margin-top:-8px;">
-                    Centang semua jenis bencana yang berpotensi terjadi di desa tsb, lalu klik &quot;Simpan&quot; pada
-                    baris terkait. Skor &amp; kategori Potensi Bencana dihitung ulang otomatis begitu tersimpan.
-                </p>
-                <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Desa</th><th>Kecamatan</th>
-                            <th>Ancaman (checklist jenis bencana)</th><th>Catatan Ancaman</th>
-                            <th>% Rentan</th><th>Kapasitas (Destana)</th>
-                            <th>Skor Potensi Bencana</th><th>Kategori</th><th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for desa_key, d in desa_list %}
-                        {% set pb = potensi_bencana_info.get(desa_key, {}) %}
-                        {% set jenis_terpilih_desa = pb.get('jenis_terpilih', []) %}
-                        <tr class="desa-edit-form">
-                            <form action="{{ url_for('admin_potensi_bencana_simpan', desa_key=desa_key) }}" method="POST">
-                            <td>{{ d.Desa }}</td>
-                            <td>{{ d.Kecamatan }}</td>
-                            <td>
-                                <div style="display:flex; flex-direction:column; gap:2px; min-width:170px;">
-                                    {% for jenis in daftar_jenis_ancaman %}
-                                    <label style="display:flex; align-items:center; gap:6px; font-size:0.82rem; font-weight:normal;">
-                                        <input type="checkbox" name="jenis_ancaman" value="{{ jenis.id }}"
-                                               {% if jenis.id in jenis_terpilih_desa %}checked{% endif %}>
-                                        {{ jenis.icon }} {{ jenis.label }}
-                                    </label>
-                                    {% endfor %}
-                                </div>
-                            </td>
-                            <td><input type="text" name="catatan_ancaman" value="{{ d.get('Ancaman_Catatan_Desa', '') }}" placeholder="opsional"></td>
-                            <td>{{ d.Persen_Rentan_Desa }}%</td>
-                            <td>{{ pb.get('kapasitas', 0) }}%</td>
-                            <td>
-                                {% if pb.get('lengkap') %}
-                                    {{ pb.get('skor') }}
-                                {% else %}
-                                    <span style="color:#64748b;font-style:italic;">Belum diisi</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if pb.get('kategori') %}
-                                <span class="badge badge-{{ pb.get('kategori') | lower }}">{{ pb.get('kategori') }}</span>
-                                {% else %}
-                                <span class="badge badge-default">&ndash;</span>
-                                {% endif %}
-                            </td>
-                            <td><button type="submit" class="btn btn-orange">Simpan</button></td>
-                            </form>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="9" class="empty-msg">Belum ada data desa.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                </div>
-            </div>
-
-            <div class="card">
-                <h3>📊 Ringkasan Potensi Bencana per Kecamatan</h3>
-                <p style="color:#94a3b8; font-size:0.85rem; margin-top:-8px;">
-                    Rata-rata skor dari desa-desa yang sudah diisi checklist Ancaman-nya di kecamatan tsb, dan
-                    gabungan jenis bencana yang tercentang di seluruh desa dalam kecamatan itu.
-                </p>
-                {% if kec_list %}
-                <div class="table-wrap"><table><thead><tr>
-                    <th>Kecamatan</th><th>Desa Terisi Ancaman</th><th>Skor Potensi Bencana (rata-rata)</th><th>Kategori</th><th>Jenis Ancaman (gabungan)</th>
-                </tr></thead><tbody>
-                {% for kec_key, kec in kec_list %}
-                {% set rk = potensi_bencana_kec_ringkas.get(kec_key, {}) %}
-                <tr>
-                    <td>{{ kec.get('Kecamatan', kec_key) }}</td>
-                    <td>{{ rk.get('jumlah_desa_terisi', 0) }} / {{ rk.get('jumlah_desa', 0) }}</td>
-                    <td>
-                        {% if rk.get('skor') is not none %}
-                            {{ rk.get('skor') }}
-                        {% else %}
-                            <span style="color:#64748b;font-style:italic;">Belum diisi</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if rk.get('kategori') %}
-                        <span class="badge badge-{{ rk.get('kategori') | lower }}">{{ rk.get('kategori') }}</span>
-                        {% else %}
-                        <span class="badge badge-default">&ndash;</span>
-                        {% endif %}
-                    </td>
-                    <td style="font-size:0.82rem; color:#94a3b8;">{{ rk.get('jenis_label_text', '-') }}</td>
-                </tr>
-                {% endfor %}
-                </tbody></table></div>
-                {% else %}<div class="empty-msg">Belum ada data kecamatan.</div>{% endif %}
             </div>
         </div>
 
@@ -865,197 +744,88 @@
 </script>
 <script>
 (function () {
-    const csrfToken = "{{ csrf_token }}";
+    const wilayah = {{ kajian_wilayah | tojson }};
+    const form = document.getElementById('kajianForm');
+    if (!form) return;
+    const kec = document.getElementById('kjKec'), desa = document.getElementById('kjDesa');
+    const kecWrap = document.getElementById('kjKecWrap'), desaWrap = document.getElementById('kjDesaWrap');
+    const hazard = document.getElementById('kjHazard'), statusEl = document.getElementById('kjStatus');
+    const hapusBtn = document.getElementById('kjHapus');
+    const isi = { kelas_bahaya: 'kjB', penduduk: 'kjP', kerugian: 'kjK', kelas_kerentanan: 'kjV',
+                  kelas_kapasitas: 'kjC', luas_risiko: 'kjLR', kelas_risiko: 'kjR' };
 
-    const scopeRadios = document.querySelectorAll('input[name="topoScope"]');
-    const kecWrap = document.getElementById('topoKecamatanWrap');
-    const kecSelect = document.getElementById('topoKecamatanSelect');
-    const desaChipsWrap = document.getElementById('topoDesaChipsWrap');
-    const desaChips = document.getElementById('topoDesaChips');
-    const fileInput = document.getElementById('topoImageFile');
-    const analisisBtn = document.getElementById('topoAnalisisBtn');
-    const simpanBtn = document.getElementById('topoSimpanBtn');
-    const statusEl = document.getElementById('topoStatus');
-    const previewCard = document.getElementById('topoPreviewCard');
-    const previewBody = document.getElementById('topoPreviewBody');
-
-    if (!analisisBtn) return; // tab tidak ada di halaman ini
-
-    let previewContext = null; // {scope, kecamatan_clean}
-
-    function scopeAktif() {
-        const el = document.querySelector('input[name="topoScope"]:checked');
-        return el ? el.value : 'kbb';
-    }
-
-    function showStatus(message, ok) {
-        statusEl.style.display = 'block';
-        statusEl.textContent = message;
-        statusEl.style.color = ok ? '#86efac' : '#fca5a5';
-    }
-
-    function perbaruiVisibilitasField() {
-        const scope = scopeAktif();
-        kecWrap.style.display = (scope === 'kecamatan' || scope === 'desa') ? 'block' : 'none';
-        desaChipsWrap.style.display = 'none';
-        desaChips.innerHTML = '';
-        if (scope === 'desa' && kecSelect.value) {
-            muatDaftarDesa(kecSelect.value);
-        }
-    }
-
-    async function muatDaftarDesa(kecamatanClean) {
-        try {
-            const resp = await fetch('/admin/topografi/wilayah/' + encodeURIComponent(kecamatanClean));
-            const data = await resp.json();
-            const daftar = (data.desa || []).map(d => d.nama);
-            if (daftar.length === 0) {
-                desaChipsWrap.style.display = 'none';
-                return;
-            }
-            desaChips.textContent = daftar.join(', ');
-            desaChipsWrap.style.display = 'block';
-        } catch (err) {
-            desaChipsWrap.style.display = 'none';
-        }
-    }
-
-    scopeRadios.forEach(r => r.addEventListener('change', perbaruiVisibilitasField));
-    kecSelect.addEventListener('change', perbaruiVisibilitasField);
-
-    function kategoriDominan(pr, ps, pt) {
-        if (pt >= pr && pt >= ps) return 'Dataran Tinggi / Pegunungan';
-        if (ps >= pr && ps >= pt) return 'Dataran Sedang / Perbukitan';
-        return 'Dataran Rendah';
-    }
-
-    function renderPreview(hasil) {
-        previewBody.innerHTML = '';
-        hasil.forEach((item, idx) => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${item.wilayah}</td>
-                <td><input type="number" min="0" max="100" step="0.1" data-idx="${idx}" data-field="persen_rendah" value="${item.persen_rendah}" style="width:70px;background:#0f172a;border:1px solid #334155;color:#f8fafc;padding:4px;border-radius:4px;"></td>
-                <td><input type="number" min="0" max="100" step="0.1" data-idx="${idx}" data-field="persen_sedang" value="${item.persen_sedang}" style="width:70px;background:#0f172a;border:1px solid #334155;color:#f8fafc;padding:4px;border-radius:4px;"></td>
-                <td><input type="number" min="0" max="100" step="0.1" data-idx="${idx}" data-field="persen_tinggi" value="${item.persen_tinggi}" style="width:70px;background:#0f172a;border:1px solid #334155;color:#f8fafc;padding:4px;border-radius:4px;"></td>
-                <td class="topo-kategori-dominan" data-idx="${idx}">${item.kategori_dominan}</td>
-                <td><input type="text" data-idx="${idx}" data-field="catatan" value="${(item.catatan || '').replace(/"/g, '&quot;')}" style="width:100%;background:#0f172a;border:1px solid #334155;color:#f8fafc;padding:4px;border-radius:4px;"></td>
-            `;
-            previewBody.appendChild(tr);
-        });
-
-        previewBody.querySelectorAll('input[type="number"]').forEach(inp => {
-            inp.addEventListener('input', function () {
-                const idx = this.dataset.idx;
-                const row = previewBody.querySelectorAll('tr')[idx];
-                const pr = parseFloat(row.querySelector('[data-field="persen_rendah"]').value) || 0;
-                const ps = parseFloat(row.querySelector('[data-field="persen_sedang"]').value) || 0;
-                const pt = parseFloat(row.querySelector('[data-field="persen_tinggi"]').value) || 0;
-                row.querySelector('.topo-kategori-dominan').textContent = kategoriDominan(pr, ps, pt);
-            });
-        });
-
-        previewCard.style.display = hasil.length ? 'block' : 'none';
-    }
-
-    function ambilHasilDariPreview() {
-        const rows = previewBody.querySelectorAll('tr');
-        const hasil = [];
-        rows.forEach(row => {
-            hasil.push({
-                wilayah: row.children[0].textContent.trim(),
-                persen_rendah: parseFloat(row.querySelector('[data-field="persen_rendah"]').value) || 0,
-                persen_sedang: parseFloat(row.querySelector('[data-field="persen_sedang"]').value) || 0,
-                persen_tinggi: parseFloat(row.querySelector('[data-field="persen_tinggi"]').value) || 0,
-                catatan: row.querySelector('[data-field="catatan"]').value || '',
-            });
-        });
-        return hasil;
-    }
-
-    analisisBtn.addEventListener('click', async function () {
-        const scope = scopeAktif();
-        const kecamatanClean = kecSelect.value || '';
-        const file = fileInput.files[0];
-
-        if ((scope === 'kecamatan' || scope === 'desa') && !kecamatanClean) {
-            showStatus('Pilih kecamatan dulu.', false);
-            return;
-        }
-        if (!file) {
-            showStatus('Pilih gambar peta topografi dulu.', false);
-            return;
-        }
-
-        const allowedExt = ['png', 'jpg', 'jpeg', 'webp'];
-        const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
-        if (!allowedExt.includes(ext)) {
-            showStatus('Format yang didukung: PNG, JPG, JPEG, WEBP.', false);
-            return;
-        }
-        if (file.size > 8 * 1024 * 1024) {
-            showStatus('Ukuran gambar maksimal 8 MB.', false);
-            return;
-        }
-
-        analisisBtn.disabled = true;
-        previewCard.style.display = 'none';
-        showStatus('AI sedang membaca gambar, mohon tunggu...', true);
-
-        try {
-            const formData = new FormData();
-            formData.append('scope', scope);
-            formData.append('kecamatan_clean', kecamatanClean);
-            formData.append('gambar', file);
-            formData.append('_csrf_token', csrfToken);
-
-            const resp = await fetch('/admin/topografi/analisis', { method: 'POST', body: formData });
-            const data = await resp.json();
-
-            if (!resp.ok) throw new Error(data.error || 'Gagal menganalisis gambar.');
-
-            previewContext = { scope: scope, kecamatan_clean: kecamatanClean };
-            renderPreview(data.hasil || []);
-            showStatus(`✓ AI selesai membaca gambar (${data.hasil.length} wilayah). Cek & koreksi angkanya sebelum disimpan.`, true);
-        } catch (err) {
-            showStatus('Gagal: ' + (err.message || err), false);
-        } finally {
-            analisisBtn.disabled = false;
-        }
+    Object.keys(wilayah).forEach(function (k) {
+        const o = document.createElement('option'); o.value = o.textContent = k; kec.appendChild(o);
     });
 
-    simpanBtn.addEventListener('click', async function () {
-        if (!previewContext) return;
-        const hasil = ambilHasilDariPreview();
+    function level() { return form.querySelector('input[name="level"]:checked').value; }
 
-        simpanBtn.disabled = true;
-        showStatus('Menyimpan ke sistem...', true);
+    function kosongkan() { Object.values(isi).forEach(function (id) { document.getElementById(id).value = ''; }); }
 
-        try {
-            const resp = await fetch('/admin/topografi/simpan', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scope: previewContext.scope,
-                    kecamatan_clean: previewContext.kecamatan_clean,
-                    hasil: hasil,
-                    _csrf_token: csrfToken,
-                }),
-            });
-            const data = await resp.json();
-            if (!resp.ok) throw new Error((data.gagal && data.gagal.join('; ')) || data.error || 'Gagal menyimpan.');
+    function tampilStatus(teks, ok) {
+        statusEl.style.display = teks ? 'block' : 'none';
+        statusEl.textContent = teks || '';
+        statusEl.style.color = ok ? '#86efac' : '#cbd5e1';
+    }
 
-            showStatus(`✓ Tersimpan (${data.diterapkan} wilayah). Memuat ulang halaman...`, true);
-            setTimeout(() => window.location.reload(), 1200);
-        } catch (err) {
-            showStatus('Gagal: ' + (err.message || err), false);
-        } finally {
-            simpanBtn.disabled = false;
-        }
-    });
+    function isiDesa() {
+        desa.innerHTML = '<option value="">-- pilih desa --</option>';
+        (wilayah[kec.value] || []).forEach(function (d) {
+            const o = document.createElement('option'); o.value = o.textContent = d; desa.appendChild(o);
+        });
+    }
+
+    function atur() {
+        const lv = level();
+        kecWrap.style.display = (lv === 'kab') ? 'none' : '';
+        desaWrap.style.display = (lv === 'desa') ? '' : 'none';
+        kec.required = (lv !== 'kab');
+        desa.required = (lv === 'desa');
+        muat();
+    }
+
+    let nomorPermintaan = 0;
+    function muat() {
+        const lv = level();
+        const siap = (lv === 'kab') || (lv === 'kec' && kec.value) || (lv === 'desa' && kec.value && desa.value);
+        kosongkan();
+        hapusBtn.style.display = 'none';
+        if (!siap) { tampilStatus('', false); return; }
+        const q = new URLSearchParams({ level: lv, kecamatan: kec.value, desa: desa.value, hazard: hazard.value });
+        const no = ++nomorPermintaan;
+        fetch('{{ url_for("admin_kajian_data") }}?' + q.toString())
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (no !== nomorPermintaan) return;
+                if (j.ada) {
+                    Object.keys(isi).forEach(function (k) {
+                        const v = j.record[k]; document.getElementById(isi[k]).value = (v === null || v === undefined) ? '' : v;
+                    });
+                    hapusBtn.style.display = '';
+                    tampilStatus('Data sudah ada. Isian di bawah adalah nilai tersimpan; ubah lalu klik Simpan.', true);
+                } else {
+                    tampilStatus('Belum ada data untuk kombinasi ini. Isi lalu klik Simpan untuk menambahkan.', false);
+                }
+            })
+            .catch(function () { tampilStatus('Gagal memuat data tersimpan.', false); });
+    }
+
+    form.querySelectorAll('input[name="level"]').forEach(function (r) { r.addEventListener('change', atur); });
+    kec.addEventListener('change', function () { isiDesa(); muat(); });
+    desa.addEventListener('change', muat);
+    hazard.addEventListener('change', muat);
+    atur();
 })();
 </script>
 <script>
+        // Setelah simpan, server redirect ke /dashboard-admin#nama-tab -> buka tab itu lagi.
+        document.addEventListener('DOMContentLoaded', function () {
+            var nama = (location.hash || '').replace('#', '');
+            if (!nama || !document.getElementById('tab-' + nama)) return;
+            var tombol = document.querySelector('.tab-btn[onclick*="showTab(\'' + nama + '\'"]');
+            showTab(nama, tombol);
+        });
+
         function showTab(name, btnEl) {
             document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));

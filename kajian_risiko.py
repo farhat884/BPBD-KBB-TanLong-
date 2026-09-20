@@ -17,11 +17,19 @@ itu apa adanya. Modul ini TIDAK menghitung ulang / menebak nilai apa pun.
 
 Mengganti data
 --------------
-Cukup taruh file matriks versi baru (nama diawali `MATRIKS_KAJIAN_RISIKO`)
-di folder `data/`. Kalau ada beberapa file, yang dipakai adalah yang
-namanya paling akhir secara alfabet (V3 > V2). Bisa juga dipaksa lewat
-environment variable `MATRIKS_KAJIAN_PATH`. Posisi kolom dicari lewat
-teks header (bukan nomor kolom), jadi tahan terhadap kolom yang
+Lewat Dashboard Admin -> tab "Kajian Risiko Bencana":
+  * UNGGAH Excel dengan format yang sama seperti file matriks BPBD
+    (sheet DESA / KECAMATAN / KABUPATEN, judul kolom di baris ke-4), atau
+  * ISI MANUAL per baris (jenis bahaya + wilayah + kelas-kelasnya).
+Hasilnya disimpan di Firebase (node `kajian_risiko`) karena folder deploy
+di Vercel read-only, lalu dipakai peta di semua instance server.
+
+File `MATRIKS_KAJIAN_RISIKO_BENCANA_KAB__BANDUNGBARAT_V*.xlsx` di folder
+`data/` tetap dipakai sebagai DATA BAWAAN selama admin belum pernah
+mengunggah / mengisi manual. Kalau ada beberapa file, yang dipakai adalah
+yang namanya paling akhir secara alfabet (V3 > V2). Bisa juga dipaksa
+lewat environment variable `MATRIKS_KAJIAN_PATH`. Posisi kolom dicari
+lewat teks header (bukan nomor kolom), jadi tahan terhadap kolom yang
 bergeser -- tapi kalau header penting hilang, file ditolak dengan pesan
 jelas (fitur dinonaktifkan, aplikasi lain tetap jalan).
 """
@@ -448,6 +456,262 @@ def muat_matriks_default(root_path):
     for w in m["warnings"]:
         print(f"   ⚠️  {w}")
     return m
+
+
+# ------------------------------------------------------------------
+# UNGGAH EXCEL & ISI MANUAL DARI DASHBOARD ADMIN
+# ------------------------------------------------------------------
+# Format Excel unggahan = format file matriks BPBD (lihat load_matriks).
+# Format manual = kolom-kolom yang memang dipakai aplikasi dari file itu:
+#   JENIS BAHAYA, KECAMATAN, DESA/KELURAHAN, KELAS (bahaya), POTENSI
+#   PENDUDUK TERPAPAR (JIWA), TOTAL KERUGIAN (JUTA RUPIAH), KELAS
+#   KERENTANAN, KELAS KAPASITAS, LUAS RISIKO TOTAL (HA), KELAS RISIKO.
+MAX_UKURAN_UNGGAH = 4 * 1024 * 1024  # batas body request Vercel ~4,5 MB
+
+LEVEL_VALID = ("desa", "kec", "kab")
+
+
+def muat_matriks_dari_bytes(isi, nama_file):
+    """
+    Baca Excel unggahan (bytes) -> matriks (struktur sama seperti
+    load_matriks). Raise ValueError berisi pesan yang bisa langsung
+    ditampilkan ke admin kalau file tidak layak.
+    """
+    import tempfile
+
+    if not isi:
+        raise ValueError("File kosong.")
+    if len(isi) > MAX_UKURAN_UNGGAH:
+        raise ValueError("Ukuran file melebihi 4 MB.")
+    if not str(nama_file or "").lower().endswith(".xlsx"):
+        raise ValueError("Format file harus .xlsx (Excel).")
+
+    fd, tmp = tempfile.mkstemp(suffix=".xlsx")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(isi)
+        try:
+            m = load_matriks(tmp)
+        except ValueError as e:
+            teks = str(e)
+            if teks.startswith("Sheet "):
+                raise  # pesan dari parser kita sendiri (mis. header hilang) -> tampilkan apa adanya
+            if "Worksheet named" in teks or "not found" in teks:
+                raise ValueError(
+                    "Sheet DESA, KECAMATAN, dan KABUPATEN harus ada semua "
+                    "di file Excel (sama seperti file matriks BPBD)."
+                ) from e
+            raise ValueError(
+                "File tidak bisa dibaca sebagai Excel. Pastikan file .xlsx "
+                "yang valid dan tidak diproteksi password."
+            ) from e
+        except Exception as e:  # noqa: BLE001 - zip rusak, dsb.
+            raise ValueError(
+                f"File Excel tidak bisa dibaca ({type(e).__name__}). "
+                "Pastikan file .xlsx valid dan tidak diproteksi password."
+            ) from e
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+    if not (m["desa"] or m["kec"] or m["kab"]):
+        raise ValueError(
+            "Tidak ada baris data yang valid. Pastikan kolom JENIS BAHAYA "
+            "dan KELAS risiko terisi, dan judul kolom ada di baris ke-4."
+        )
+    m["file"] = os.path.basename(str(nama_file))
+    return m
+
+
+def _bersih(rec):
+    """Buang nilai None supaya node Firebase kecil (Firebase juga membuangnya)."""
+    return {k: v for k, v in rec.items() if v is not None}
+
+
+def matriks_ke_dict(m, meta):
+    """
+    Matriks -> dict aman-Firebase (kunci hanya a-z0-9/_ ; kunci desa =
+    "<kec>__<desa>"). meta: {file, sumber, updated_at, updated_by, version}.
+    """
+    desa = {}
+    for (kk, dk), per in m["desa"].items():
+        if kk and dk:
+            desa[f"{kk}__{dk}"] = {hz: _bersih(r) for hz, r in per.items()}
+    kec = {
+        kk: {hz: _bersih(r) for hz, r in per.items()}
+        for kk, per in m["kec"].items() if kk
+    }
+    kab = {hz: _bersih(r) for hz, r in m["kab"].items()}
+    meta = dict(meta)
+    meta["warnings"] = list(m.get("warnings", []))[:200]
+    return {"meta": meta, "desa": desa, "kec": kec, "kab": kab}
+
+
+def matriks_dari_dict(d):
+    """Kebalikan matriks_ke_dict. Return None kalau node kosong/tidak layak."""
+    if not isinstance(d, dict):
+        return None
+    desa = {}
+    for kunci, per in (d.get("desa") or {}).items():
+        if "__" not in kunci or not isinstance(per, dict):
+            continue
+        kk, dk = kunci.split("__", 1)
+        desa[(kk, dk)] = {hz: r for hz, r in per.items() if isinstance(r, dict) and r.get("r")}
+    kec = {
+        kk: {hz: r for hz, r in per.items() if isinstance(r, dict) and r.get("r")}
+        for kk, per in (d.get("kec") or {}).items() if isinstance(per, dict)
+    }
+    kab = {hz: r for hz, r in (d.get("kab") or {}).items() if isinstance(r, dict) and r.get("r")}
+    if not (desa or kec or kab):
+        return None
+    meta = d.get("meta") if isinstance(d.get("meta"), dict) else {}
+    return {
+        "file": meta.get("file") or "data admin",
+        "desa": desa,
+        "kec": kec,
+        "kab": kab,
+        "warnings": list(meta.get("warnings") or []),
+        "meta": meta,
+    }
+
+
+def _angka_manual(teks, nama):
+    teks = str(teks or "").strip().replace(",", ".")
+    if teks == "":
+        return None
+    try:
+        v = float(teks)
+    except ValueError:
+        raise ValueError(f"{nama} harus berupa angka.")
+    if v < 0 or v != v:
+        raise ValueError(f"{nama} tidak boleh negatif.")
+    return v
+
+
+def _kelas_manual(teks, nama, wajib=False):
+    teks = str(teks or "").strip()
+    if not teks:
+        if wajib:
+            raise ValueError(f"{nama} wajib dipilih.")
+        return None
+    k = _kelas(teks)
+    if k is None:
+        raise ValueError(f"{nama} harus Rendah, Sedang, atau Tinggi.")
+    return k
+
+
+def kunci_dari_form(form):
+    """
+    Form -> (level, kunci_kec, kunci_desa, hazard_id, nama_kec, nama_desa).
+    Kunci nama memakai key_js() -- SAMA dengan yang dipakai peta -- jadi
+    pasti cocok dengan wilayah di GeoJSON. Raise ValueError (pesan siap
+    tampil) kalau isian tidak valid.
+    """
+    level = str(form.get("level", "")).strip()
+    if level not in LEVEL_VALID:
+        raise ValueError("Tingkat wilayah tidak valid.")
+    hz = str(form.get("hazard", "")).strip()
+    if hz not in HAZARD_BY_ID:
+        raise ValueError("Jenis bahaya tidak valid.")
+
+    nama_kec = str(form.get("kecamatan", "")).strip() if level in ("kec", "desa") else ""
+    nama_desa = str(form.get("desa", "")).strip() if level == "desa" else ""
+    kk = key_js(nama_kec)
+    dk = key_js(nama_desa)
+    if level in ("kec", "desa") and not kk:
+        raise ValueError("Kecamatan wajib dipilih.")
+    if level == "desa" and not dk:
+        raise ValueError("Desa/Kelurahan wajib dipilih.")
+    return level, kk, dk, hz, nama_kec, nama_desa
+
+
+def buat_record_manual(form):
+    """Form isian manual -> (level, kk, dk, hazard_id, record)."""
+    level, kk, dk, hz, nama_kec, nama_desa = kunci_dari_form(form)
+    rec = {
+        "hazard": hz,
+        "r": _kelas_manual(form.get("kelas_risiko"), "Kelas Risiko", wajib=True),
+        "b": _kelas_manual(form.get("kelas_bahaya"), "Kelas Bahaya"),
+        "v": _kelas_manual(form.get("kelas_kerentanan"), "Kelas Kerentanan"),
+        "c": _kelas_manual(form.get("kelas_kapasitas"), "Kelas Kapasitas"),
+        "p": _angka_manual(form.get("penduduk"), "Potensi Penduduk Terpapar"),
+        "k": _angka_manual(form.get("kerugian"), "Total Kerugian"),
+        "lr": _angka_manual(form.get("luas_risiko"), "Luas Risiko Total"),
+    }
+    if level in ("kec", "desa"):
+        rec["kec"] = nama_kec
+    if level == "desa":
+        rec["desa"] = nama_desa
+    return level, kk, dk, hz, _bersih(rec)
+
+
+def terapkan_record(m, level, kk, dk, hz, rec):
+    """Tulis (atau hapus, kalau rec None) satu record di matriks di memori."""
+    if level == "kab":
+        if rec is None:
+            m["kab"].pop(hz, None)
+        else:
+            m["kab"][hz] = rec
+        return
+    wadah = m["desa"] if level == "desa" else m["kec"]
+    kunci = (kk, dk) if level == "desa" else kk
+    if rec is None:
+        per = wadah.get(kunci)
+        if per is not None:
+            per.pop(hz, None)
+            if not per:  # wilayah tanpa data sama sekali -> buang
+                wadah.pop(kunci, None)
+    else:
+        wadah.setdefault(kunci, {})[hz] = rec
+
+
+def path_firebase_record(level, kk, dk, hz):
+    """Path relatif di dalam node kajian_risiko untuk satu record."""
+    if level == "desa":
+        return f"desa/{kk}__{dk}/{hz}"
+    if level == "kec":
+        return f"kec/{kk}/{hz}"
+    return f"kab/{hz}"
+
+
+def cari_record(m, level, kk, dk, hz):
+    if m is None:
+        return None
+    if level == "desa":
+        return (m["desa"].get((kk, dk)) or {}).get(hz)
+    if level == "kec":
+        return (m["kec"].get(kk) or {}).get(hz)
+    return m["kab"].get(hz)
+
+
+def ringkasan_matriks(m):
+    """Ringkasan untuk kartu status di dashboard admin (None -> belum ada data)."""
+    if m is None:
+        return None
+    meta = m.get("meta") or {}
+    per_hazard = []
+    for hz in HAZARDS:
+        n_desa = sum(1 for per in m["desa"].values() if hz["id"] in per)
+        n_kec = sum(1 for per in m["kec"].values() if hz["id"] in per)
+        kab = (m["kab"].get(hz["id"]) or {}).get("r")
+        per_hazard.append({
+            "icon": hz["icon"], "label": hz["label"],
+            "desa": n_desa, "kec": n_kec, "kab": kab or "-",
+        })
+    return {
+        "file": m.get("file", "-"),
+        "sumber": meta.get("sumber", "bawaan"),
+        "updated_at": meta.get("updated_at", ""),
+        "updated_by": meta.get("updated_by", ""),
+        "n_desa": len(m["desa"]),
+        "n_kec": len(m["kec"]),
+        "n_kab": len(m["kab"]),
+        "per_hazard": per_hazard,
+        "warnings": list(m.get("warnings", []))[:30],
+        "n_warnings": len(m.get("warnings", [])),
+    }
 
 
 # ------------------------------------------------------------------
