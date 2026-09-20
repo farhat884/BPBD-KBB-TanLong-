@@ -8,7 +8,25 @@ from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, db
 from groq import Groq
-from rag_engine import extract_text_bytes, save_document, save_manual_knowledge, list_documents, retrieve, build_context, delete_document
+# rag_engine (chatbot / basis pengetahuan) memuat scikit-learn + scipy yang
+# butuh ~0,9 detik hanya untuk di-import. Halaman login, dashboard, dan peta
+# tidak memerlukannya, jadi dimuat MALAS: baru saat fungsi chatbot/pengetahuan
+# pertama kali dipanggil. Nama & cara pakainya di seluruh app.py tidak berubah.
+def _rag_malas(nama):
+    def _panggil(*args, **kwargs):
+        import rag_engine
+        return getattr(rag_engine, nama)(*args, **kwargs)
+    _panggil.__name__ = nama
+    return _panggil
+
+
+extract_text_bytes = _rag_malas("extract_text_bytes")
+save_document = _rag_malas("save_document")
+save_manual_knowledge = _rag_malas("save_manual_knowledge")
+list_documents = _rag_malas("list_documents")
+retrieve = _rag_malas("retrieve")
+build_context = _rag_malas("build_context")
+delete_document = _rag_malas("delete_document")
 
 import folium
 
@@ -33,6 +51,51 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-hanya-untuk-lokal')
+
+
+# ========================================================
+# KOMPRESI GZIP
+# ========================================================
+# Halaman peta (/kondisi) ~7 MB mentah tapi ~1,2 MB kalau di-gzip (teks
+# HTML/JSON sangat mudah dikompres), dan dashboard admin ~0,9 MB. Tanpa
+# kompresi, semuanya dikirim mentah -- lambat di jaringan seluler. Hook ini
+# mengompres respons teks bila browser mengaku mendukung gzip. Kalau
+# hosting sudah mengompres sendiri (header Content-Encoding sudah ada),
+# respons dilewatkan tanpa diubah.
+import gzip as _gzip
+
+_MIME_KOMPRESIBEL = (
+    "text/html", "text/css", "text/plain", "text/javascript",
+    "application/javascript", "application/json", "application/geo+json",
+    "image/svg+xml",
+)
+_UKURAN_MIN_GZIP = 1024  # di bawah ini tak sebanding dengan biayanya
+
+
+@app.after_request
+def kompres_gzip(response):
+    try:
+        if (
+            response.status_code != 200
+            or response.direct_passthrough
+            or response.is_streamed
+            or "Content-Encoding" in response.headers
+            or "gzip" not in request.headers.get("Accept-Encoding", "").lower()
+            or response.mimetype not in _MIME_KOMPRESIBEL
+        ):
+            return response
+
+        data = response.get_data()
+        if len(data) < _UKURAN_MIN_GZIP:
+            return response
+
+        response.set_data(_gzip.compress(data, compresslevel=5, mtime=0))
+        response.headers["Content-Encoding"] = "gzip"
+        response.headers["Content-Length"] = str(len(response.get_data()))
+        response.headers.add("Vary", "Accept-Encoding")
+    except Exception as e:  # noqa: BLE001 - kompresi tak boleh menjatuhkan request
+        print(f"⚠️  Kompresi gzip dilewati: {e}")
+    return response
 
 _groq_api_key = os.getenv("GROQ_API_KEY")
 if not _groq_api_key:
@@ -112,6 +175,60 @@ if not firebase_admin._apps:
     })
 
 print("Berhasil terhubung ke Firebase!")
+
+# ========================================================
+# PREFETCH FIREBASE PARALEL SAAT START
+# ========================================================
+# Saat start, aplikasi membaca 6 node Firebase yang saling bebas. Dulu
+# dibaca satu per satu (6 kali tunggu jaringan berurutan) SESUDAH semua
+# pekerjaan lokal selesai. Sekarang keenamnya diminta serentak di thread
+# latar SEKARANG JUGA, jadi menunggu jaringannya tumpang-tindih dengan
+# pekerjaan lokal (baca Excel, klasterisasi, dst) dan satu sama lain.
+#
+# _fb_get(path) memberi hasil prefetch itu kalau masih segar (<= 30 detik,
+# artinya memang hasil start ini); selain itu -- termasuk pemanggilan
+# berikutnya setelah server berjalan lama -- membaca Firebase langsung
+# seperti biasa. Kalau prefetch gagal, error yang SAMA dilempar ulang ke
+# pemanggil, sehingga try/except di tiap fungsi sync berperilaku persis
+# seperti sebelumnya.
+_FB_PREFETCH_PATHS = (
+    'desa_overrides',
+    'topografi_manual_kec',
+    'topografi_manual_desa',
+    'daftar_jenis_ancaman_custom',
+    'potensi_bencana_ancaman_desa',
+    'laporan_edukasi',
+)
+_FB_PREFETCH_MAX_UMUR = 30  # detik
+_FB_PREFETCH = {}
+
+
+def _mulai_prefetch_firebase():
+    from concurrent.futures import ThreadPoolExecutor
+    executor = ThreadPoolExecutor(
+        max_workers=len(_FB_PREFETCH_PATHS),
+        thread_name_prefix="fb-prefetch",
+    )
+    waktu = time.time()
+    for path in _FB_PREFETCH_PATHS:
+        _FB_PREFETCH[path] = (
+            waktu,
+            executor.submit(lambda p=path: db.reference(p).get()),
+        )
+    executor.shutdown(wait=False)  # thread selesai sendiri setelah tugasnya
+
+
+def _fb_get(path):
+    """db.reference(path).get() -- pakai hasil prefetch start kalau masih segar."""
+    item = _FB_PREFETCH.pop(path, None)
+    if item is not None:
+        waktu, future = item
+        if time.time() - waktu <= _FB_PREFETCH_MAX_UMUR:
+            return future.result()  # lempar ulang error aslinya bila gagal
+    return db.reference(path).get()
+
+
+_mulai_prefetch_firebase()
 
 # ========================================================
 # AUTH HELPERS (Login & Role)
@@ -595,8 +712,7 @@ def sync_desa_overrides():
     """
 
     try:
-        ref_override = db.reference('desa_overrides')
-        override_data = ref_override.get() or {}
+        override_data = _fb_get('desa_overrides') or {}
     except Exception as e:
         print(f"⚠️  Gagal sinkronisasi override data desa dari Firebase: {e}")
         override_data = {}
@@ -643,13 +759,13 @@ def sync_topografi_manual():
     kecamatan induknya).
     """
     try:
-        data_kec = db.reference('topografi_manual_kec').get() or {}
+        data_kec = _fb_get('topografi_manual_kec') or {}
     except Exception as e:
         print(f"⚠️  Gagal sinkronisasi topografi manual (kecamatan): {e}")
         data_kec = {}
 
     try:
-        data_desa = db.reference('topografi_manual_desa').get() or {}
+        data_desa = _fb_get('topografi_manual_desa') or {}
     except Exception as e:
         print(f"⚠️  Gagal sinkronisasi topografi manual (desa): {e}")
         data_desa = {}
@@ -718,7 +834,7 @@ def get_daftar_jenis_ancaman():
     Return: list[dict] -- tiap item {'id', 'label', 'icon', 'custom'}
     """
     try:
-        data = db.reference('daftar_jenis_ancaman_custom').get() or {}
+        data = _fb_get('daftar_jenis_ancaman_custom') or {}
     except Exception as e:
         print(f"⚠️  Gagal ambil daftar jenis ancaman custom dari Firebase: {e}")
         data = {}
@@ -755,7 +871,7 @@ def sync_potensi_bencana_ancaman():
     memori antar-request/deploy.
     """
     try:
-        data = db.reference('potensi_bencana_ancaman_desa').get() or {}
+        data = _fb_get('potensi_bencana_ancaman_desa') or {}
     except Exception as e:
         print(f"⚠️  Gagal sinkronisasi data Ancaman (Potensi Bencana) dari Firebase: {e}")
         data = {}
@@ -832,8 +948,7 @@ def sync_realisasi_edukasi():
         k['Jumlah_Teredukasi_Aktual_Kec'] = 0
 
     try:
-        ref_laporan = db.reference('laporan_edukasi')
-        laporan_data = ref_laporan.get() or {}
+        laporan_data = _fb_get('laporan_edukasi') or {}
     except Exception as e:
         print(f"⚠️  Gagal sinkronisasi realisasi edukasi dari Firebase: {e}")
         laporan_data = {}
@@ -964,6 +1079,51 @@ def get_cached_map():
 # GEOJSON
 # ========================================================
  
+# ========================================================
+# PEMADATAN KOORDINAT GEOJSON
+# ========================================================
+# File GeoJSON batas wilayah menyimpan rata-rata ~10 digit desimal per
+# koordinat (presisi sub-milimeter -- jauh melebihi kebutuhan peta). Semua
+# koordinat itu ikut ditanam ke halaman peta (~6 MB). Saat dibaca, koordinat
+# dibulatkan ke 5 desimal (~1 meter; selisih maksimum ~0,55 m, tak terlihat
+# bahkan di zoom terdekat) dan titik kembar berurutan akibat pembulatan
+# dibuang. File aslinya di static/ TIDAK diubah. Vertex yang dipakai
+# bersama dua wilayah bertetangga dibulatkan sama persis, jadi tidak muncul
+# celah di antara poligon.
+KOORDINAT_DESIMAL = 5
+
+
+def _bulatkan_koordinat(coords, desimal=KOORDINAT_DESIMAL):
+    if not isinstance(coords, list) or not coords:
+        return coords
+
+    # daun: satu titik [lon, lat, (z)]
+    if isinstance(coords[0], (int, float)):
+        return [round(coords[0], desimal), round(coords[1], desimal)] + coords[2:]
+
+    hasil = [_bulatkan_koordinat(c, desimal) for c in coords]
+
+    # daftar titik (ring / garis): buang titik kembar yang berurutan
+    pertama = hasil[0]
+    if isinstance(pertama, list) and pertama and isinstance(pertama[0], (int, float)):
+        tanpa_kembar = [pertama]
+        for titik in hasil[1:]:
+            if titik[:2] != tanpa_kembar[-1][:2]:
+                tanpa_kembar.append(titik)
+        # ring poligon minimal 4 titik; kalau jadi kurang, biarkan apa adanya
+        if len(tanpa_kembar) >= 4 or len(hasil) < 4:
+            hasil = tanpa_kembar
+
+    return hasil
+
+
+def _padatkan_geojson_features(features):
+    for feature in features:
+        geom = feature.get("geometry") if isinstance(feature, dict) else None
+        if isinstance(geom, dict) and "coordinates" in geom:
+            geom["coordinates"] = _bulatkan_koordinat(geom["coordinates"])
+
+
 @lru_cache(maxsize=1)
 def load_local_geojson_files():
  
@@ -1070,6 +1230,8 @@ def load_local_geojson_files():
                 continue
  
  
+            _padatkan_geojson_features(file_features)
+
             for feature in file_features:
  
                 if "properties" not in feature:
@@ -1806,6 +1968,8 @@ def generate_map():
         ) as f:
  
             kec_geojson = json.load(f)
+
+        _padatkan_geojson_features(kec_geojson.get("features", []))
  
  
         def style_kecamatan(feature):

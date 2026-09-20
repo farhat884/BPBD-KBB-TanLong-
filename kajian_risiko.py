@@ -27,6 +27,7 @@ jelas (fitur dinonaktifkan, aplikasi lain tetap jalan).
 """
 
 import glob
+import hashlib
 import json
 import os
 import re
@@ -341,6 +342,77 @@ def load_matriks(path):
     }
 
 
+# ------------------------------------------------------------------
+# CACHE JSON (supaya start server tidak perlu membaca Excel ~1,3 detik)
+# ------------------------------------------------------------------
+# Membaca xlsx 470 KB lewat pandas/openpyxl butuh sekitar 1,3 detik di
+# SETIAP start server -- di hosting serverless itu terasa di tiap cold
+# start. Hasil bacaannya karena itu disimpan sebagai JSON kecil
+# (data/kajian_risiko_cache.json) yang ikut di-deploy dan dimuat dalam
+# hitungan milidetik.
+#
+# Cache dianggap sah HANYA kalau sidik jari (SHA-1) file Excel-nya sama
+# dengan yang tercatat di cache. Jadi kalau Excel diganti tapi cache lupa
+# dibangun ulang, aplikasi otomatis membaca Excel (lebih lambat tapi
+# tetap BENAR), dan mencoba menulis cache baru kalau foldernya bisa
+# ditulis. Bangun ulang manual:  python kajian_risiko.py
+_CACHE_VERSI = 1
+_NAMA_CACHE = "kajian_risiko_cache.json"
+
+
+def _sha1_file(path):
+    h = hashlib.sha1()
+    with open(path, "rb") as f:
+        for blok in iter(lambda: f.read(1 << 16), b""):
+            h.update(blok)
+    return h.hexdigest()
+
+
+def _simpan_cache(m, path_cache, sha1):
+    data = {
+        "versi": _CACHE_VERSI,
+        "sha1": sha1,
+        "file": m["file"],
+        "warnings": m["warnings"],
+        # kunci tuple tidak bisa jadi kunci JSON -> simpan sebagai daftar
+        "desa": [[kk, dk, per] for (kk, dk), per in m["desa"].items()],
+        "kec": m["kec"],
+        "kab": m["kab"],
+    }
+    tmp = path_cache + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, separators=(",", ":"), ensure_ascii=False)
+    os.replace(tmp, path_cache)  # atomik: tidak ada file setengah jadi
+
+
+def _muat_cache(path_cache, sha1):
+    """Return matriks dari cache, atau None kalau tidak ada/tidak cocok/rusak."""
+    try:
+        with open(path_cache, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if data.get("versi") != _CACHE_VERSI or data.get("sha1") != sha1:
+            return None
+        return {
+            "file": data["file"],
+            "desa": {(kk, dk): per for kk, dk, per in data["desa"]},
+            "kec": data["kec"],
+            "kab": data["kab"],
+            "warnings": data.get("warnings", []),
+            "dari_cache": True,
+        }
+    except Exception:  # noqa: BLE001 - cache rusak/hilang = baca Excel saja
+        return None
+
+
+def bangun_cache(root_path):
+    """Baca Excel lalu (re)tulis cache. Dipanggil manual: python kajian_risiko.py"""
+    path = cari_file_matriks(os.path.join(root_path, "data"))
+    m = load_matriks(path)
+    path_cache = os.path.join(root_path, "data", _NAMA_CACHE)
+    _simpan_cache(m, path_cache, _sha1_file(path))
+    return path_cache, m
+
+
 def muat_matriks_default(root_path):
     """
     Muat matriks dari lokasi standar. TIDAK pernah raise: kalau gagal,
@@ -349,13 +421,28 @@ def muat_matriks_default(root_path):
     """
     try:
         path = cari_file_matriks(os.path.join(root_path, "data"))
-        m = load_matriks(path)
+        if not path or not os.path.exists(path):
+            raise FileNotFoundError(
+                f"File matriks kajian risiko tidak ditemukan: {path}"
+            )
+
+        sha1 = _sha1_file(path)
+        path_cache = os.path.join(root_path, "data", _NAMA_CACHE)
+
+        m = _muat_cache(path_cache, sha1)
+        if m is None:
+            m = load_matriks(path)  # lambat (~1,3 dtk) -- hanya kalau cache basi
+            try:
+                _simpan_cache(m, path_cache, sha1)
+            except OSError:
+                pass  # folder read-only (mis. serverless): abaikan
     except Exception as e:  # noqa: BLE001 - sengaja luas, jangan sampai app mati
         print(f"⚠️  Kajian Risiko Bencana dinonaktifkan: {type(e).__name__}: {e}")
         return None
 
+    sumber = "cache" if m.get("dari_cache") else "Excel"
     print(
-        f"✅ Kajian Risiko Bencana dimuat dari {m['file']} "
+        f"✅ Kajian Risiko Bencana dimuat dari {m['file']} [{sumber}] "
         f"({len(m['desa'])} desa, {len(m['kec'])} kecamatan)."
     )
     for w in m["warnings"]:
@@ -514,3 +601,10 @@ def data_js(data_peta):
         "__KAJIAN_WARNA_JSON__": dump({**WARNA_KELAS, "_none": WARNA_TIDAK_ADA}),
         "__KAJIAN_DEFAULT_HAZARD__": DEFAULT_HAZARD_ID,
     }
+
+
+if __name__ == "__main__":
+    # python kajian_risiko.py  -> bangun ulang data/kajian_risiko_cache.json
+    _root = os.path.dirname(os.path.abspath(__file__))
+    _p, _m = bangun_cache(_root)
+    print(f"Cache ditulis: {_p} ({len(_m['desa'])} desa, {len(_m['kec'])} kecamatan)")
