@@ -4131,14 +4131,28 @@ DEFAULT_DESTANA_INDICATORS = [
 DEFAULT_DESTANA_THRESHOLD = 80
 
 
+def _as_dict(value):
+    """
+    Firebase RTDB otomatis mengubah dict yang semua kuncinya angka
+    ('1','2','3'...) menjadi ARRAY saat disimpan, dan SDK Python
+    membacanya balik sebagai list. Fungsi ini mengembalikannya ke dict
+    supaya pengecekan isinstance(..., dict) tidak membuang datanya.
+    """
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        return {str(i): v for i, v in enumerate(value) if v is not None}
+    return {}
+
+
 def destana_key(kecamatan, desa):
     return f"{clean_name(kecamatan)}__{clean_name(desa)}"
 
 
 def get_destana_indicators():
     ref = db.reference('destana/indicators')
-    data = ref.get()
-    if not isinstance(data, dict) or not data:
+    data = _as_dict(ref.get())
+    if not data:
         data = {}
         for i, nama in enumerate(DEFAULT_DESTANA_INDICATORS, 1):
             data[str(i)] = {
@@ -4173,8 +4187,8 @@ def load_destana_snapshot():
     if not isinstance(data, dict):
         data = {}
 
-    indicators = data.get('indicators')
-    if not isinstance(indicators, dict) or not indicators:
+    indicators = _as_dict(data.get('indicators'))
+    if not indicators:
         # Belum ada indikator -> pakai fungsi lama yang sekaligus menyemai
         # indikator bawaan (hanya terjadi sekali di database kosong).
         indicators = get_destana_indicators()
@@ -4186,9 +4200,7 @@ def load_destana_snapshot():
     except (TypeError, ValueError):
         threshold = DEFAULT_DESTANA_THRESHOLD
 
-    checklists = data.get('checklists')
-    if not isinstance(checklists, dict):
-        checklists = {}
+    checklists = _as_dict(data.get('checklists'))
 
     return indicators, threshold, checklists
 
@@ -4204,11 +4216,8 @@ def get_destana_record(kecamatan, desa, indicators, checklists=None, threshold=N
         record = checklists.get(key)
     else:
         record = db.reference(f'destana/checklists/{key}').get()
-    if not isinstance(record, dict):
-        record = {}
-    checked = record.get('checked', {})
-    if not isinstance(checked, dict):
-        checked = {}
+    record = _as_dict(record)
+    checked = _as_dict(record.get('checked'))
     active = [k for k, v in indicators.items() if isinstance(v, dict) and v.get('aktif', True)]
     total = len(active)
     terpenuhi = sum(1 for k in active if bool(checked.get(k)))
